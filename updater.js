@@ -2,7 +2,7 @@ const { app, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const CHECK_DELAY_MS = 8000;
+const CHECK_DELAY_MS = 1500;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
 function readIgnored(file) {
@@ -22,13 +22,19 @@ function initUpdater(getWindow) {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
 
-  if (!app.isPackaged) {
+  const isDev = !app.isPackaged;
+  const devConfigFile = path.join(__dirname, 'dev-app-update.yml');
+
+  if (isDev && !fs.existsSync(devConfigFile)) {
     ipcMain.handle('update-check', () => ({ ok: false, reason: 'dev' }));
     ipcMain.on('update-action', () => {});
     return;
   }
 
   const { autoUpdater } = require('electron-updater');
+  if (isDev) {
+    autoUpdater.forceDevUpdateConfig = true;
+  }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 

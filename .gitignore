@@ -13,3 +13,4 @@ bin/ffprobe.exe
 RIFF_*.md
 riff_*.md
 strip_comments.js
+dev-app-update.yml
