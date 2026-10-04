@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/rootscripts/riff/banner.png" alt="Riff Banner" width="100%">
+  <img src="banner.png" alt="Riff Banner" width="100%">
 </p>
 
 # Riff
