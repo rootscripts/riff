@@ -20,7 +20,8 @@ function initUpdater(getWindow) {
   let installNow = false;
   let current = null;
 
-  ipcMain.handle('get-app-version', () => app.getVersion());
+  const pkg = require('./package.json');
+  ipcMain.handle('get-app-version', () => pkg.version || app.getVersion());
 
   const isDev = !app.isPackaged;
   const devConfigFile = path.join(__dirname, 'dev-app-update.yml');
@@ -34,6 +35,7 @@ function initUpdater(getWindow) {
   const { autoUpdater } = require('electron-updater');
   if (isDev) {
     autoUpdater.forceDevUpdateConfig = true;
+    autoUpdater.currentVersion = pkg.version || '1.0.0';
   }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
