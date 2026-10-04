@@ -15,12 +15,12 @@ function writeIgnored(file, version) {
 
 function initUpdater(getWindow) {
   const ignoreFile = path.join(app.getPath('userData'), 'ignored-update.json');
-  const releasesUrl = `${require('./package.json').homepage}/releases`;
+  const pkg = require('./package.json');
+  const releasesUrl = `${pkg.homepage || 'https://github.com/rootscripts/riff'}/releases`;
   let manualCheck = false;
   let installNow = false;
   let current = null;
 
-  const pkg = require('./package.json');
   ipcMain.handle('get-app-version', () => pkg.version || app.getVersion());
 
   const isDev = !app.isPackaged;
