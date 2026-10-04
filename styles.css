@@ -3080,6 +3080,54 @@ body.is-playing .shape-triangle {
   text-overflow: ellipsis;
 }
 
+.riff-toast.has-actions {
+  cursor: default;
+  max-width: 680px;
+}
+
+.riff-toast.has-actions .toast-text {
+  max-width: none;
+}
+
+.riff-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.riff-toast-btn {
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: calc(12px * var(--font-scale, 1));
+  font-weight: 500;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 150ms ease, opacity 150ms ease;
+  white-space: nowrap;
+}
+
+.riff-toast-btn.primary {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border: none;
+}
+
+.riff-toast-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.riff-toast-btn.text {
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  border: none;
+}
+
+.riff-toast-btn.text:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .riff-toast.liquid-open > * {
   opacity: 1 !important;
   transform: translateY(0) !important;

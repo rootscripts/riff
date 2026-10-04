@@ -87,12 +87,36 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toastQueue = [];
   let isToastActive = false;
 
-  function showToast(message, type = 'info') {
+  function showToast(message, type = 'info', options = null) {
     if (!message) return;
-    toastQueue.push({ message, type });
+    let handle = null;
+    let toastItem = null;
+
+    if (options && (options.actions || options.persistent)) {
+      handle = {
+        setText(text) {
+          const clean = String(text).charAt(0).toUpperCase() + String(text).slice(1);
+          if (toastItem && toastItem.textEl) {
+            toastItem.textEl.textContent = clean;
+          }
+          if (toastItem && toastItem.actionsEl) {
+            toastItem.actionsEl.style.display = 'none';
+          }
+        },
+        close() {
+          if (toastItem && toastItem.dismiss) {
+            toastItem.dismiss();
+          }
+        }
+      };
+    }
+
+    toastItem = { message, type, options, textEl: null, actionsEl: null, dismiss: null };
+    toastQueue.push(toastItem);
     if (!isToastActive) {
       processToastQueue();
     }
+    return handle;
   }
 
   function processToastQueue() {
@@ -101,7 +125,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     isToastActive = true;
-    const { message, type } = toastQueue.shift();
+    const currentItem = toastQueue.shift();
+    const { message, type, options } = currentItem;
     const container = document.getElementById('toast-container');
     if (!container) {
       isToastActive = false;
@@ -129,6 +154,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span class="toast-text">${cleanMessage}</span>
     `;
 
+    const textEl = toast.querySelector('.toast-text');
+    currentItem.textEl = textEl;
+
+    const hasActions = options && options.actions && options.actions.length > 0;
+    const isPersistent = hasActions || (options && options.persistent);
+
+    if (hasActions) {
+      toast.classList.add('has-actions');
+      const actionsContainer = document.createElement('div');
+      actionsContainer.className = 'riff-toast-actions';
+      options.actions.forEach((act) => {
+        const btn = document.createElement('button');
+        btn.className = `riff-toast-btn ${act.primary ? 'primary' : 'text'}`;
+        btn.textContent = act.label;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (act.onClick) act.onClick();
+        });
+        actionsContainer.appendChild(btn);
+      });
+      toast.appendChild(actionsContainer);
+      currentItem.actionsEl = actionsContainer;
+    }
+
     container.appendChild(toast);
     LiquidMotion.open(toast, null, 'y');
 
@@ -147,26 +196,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     };
 
-    const startTimer = (dur) => {
-      startTimestamp = Date.now();
-      timer = setTimeout(dismiss, dur);
-    };
+    currentItem.dismiss = dismiss;
 
-    toast.addEventListener('mouseenter', () => {
-      if (timer) clearTimeout(timer);
-      remaining -= (Date.now() - startTimestamp);
-      if (remaining < 500) remaining = 500;
-    });
+    if (!isPersistent) {
+      const startTimer = (dur) => {
+        startTimestamp = Date.now();
+        timer = setTimeout(dismiss, dur);
+      };
 
-    toast.addEventListener('mouseleave', () => {
-      if (!dismissed) {
-        startTimer(remaining);
-      }
-    });
+      toast.addEventListener('mouseenter', () => {
+        if (timer) clearTimeout(timer);
+        remaining -= (Date.now() - startTimestamp);
+        if (remaining < 500) remaining = 500;
+      });
 
-    toast.addEventListener('click', dismiss);
+      toast.addEventListener('mouseleave', () => {
+        if (!dismissed) {
+          startTimer(remaining);
+        }
+      });
 
-    startTimer(remaining);
+      toast.addEventListener('click', dismiss);
+
+      startTimer(remaining);
+    }
   }
 
   const savedScale = parseFloat(localStorage.getItem('devsize_ui_scale') || '100');
@@ -5676,6 +5729,110 @@ document.addEventListener('DOMContentLoaded', async () => {
       sessionStorage.setItem('riff_tools_prompt_dismissed', '1');
       closeModal(toolsModal);
     });
+  }
+
+  if (window.electronAPI && window.electronAPI.onUpdateAvailable) {
+    let userTriggeredUpdate = false;
+    let activeUpdateToast = null;
+
+    window.electronAPI.onUpdateAvailable((d) => {
+      let actions = [];
+      if (d.canInstall) {
+        actions = [
+          {
+            label: 'Update now',
+            primary: true,
+            onClick: () => {
+              userTriggeredUpdate = true;
+              window.electronAPI.updateAction('now');
+              if (activeUpdateToast) activeUpdateToast.setText('Downloading update 0%');
+            }
+          },
+          {
+            label: 'On next launch',
+            primary: false,
+            onClick: () => {
+              window.electronAPI.updateAction('later');
+              if (activeUpdateToast) activeUpdateToast.close();
+              showToast('The update will install when you quit Riff');
+            }
+          },
+          {
+            label: 'Ignore',
+            primary: false,
+            onClick: () => {
+              window.electronAPI.updateAction('ignore');
+              if (activeUpdateToast) activeUpdateToast.close();
+            }
+          }
+        ];
+      } else {
+        actions = [
+          {
+            label: 'Open release page',
+            primary: true,
+            onClick: () => {
+              window.open(d.url);
+            }
+          },
+          {
+            label: 'Ignore',
+            primary: false,
+            onClick: () => {
+              window.electronAPI.updateAction('ignore');
+              if (activeUpdateToast) activeUpdateToast.close();
+            }
+          }
+        ];
+      }
+
+      activeUpdateToast = showToast('Riff ' + d.version + ' is available', 'info', { actions, persistent: true });
+    });
+
+    if (window.electronAPI.onUpdateProgress) {
+      window.electronAPI.onUpdateProgress((p) => {
+        if (activeUpdateToast) activeUpdateToast.setText('Downloading update ' + p.percent + '%');
+      });
+    }
+
+    if (window.electronAPI.onUpdateReady) {
+      window.electronAPI.onUpdateReady(() => {
+        if (activeUpdateToast) activeUpdateToast.close();
+        showToast('Update downloaded. It will install when you quit Riff.');
+      });
+    }
+
+    if (window.electronAPI.onUpdateError) {
+      window.electronAPI.onUpdateError((e) => {
+        if (activeUpdateToast) activeUpdateToast.close();
+        if (userTriggeredUpdate) {
+          showToast(e && e.message ? e.message : 'Update failed', 'error');
+        }
+      });
+    }
+
+    if (window.electronAPI.onUpdateNotAvailable) {
+      window.electronAPI.onUpdateNotAvailable(() => {
+        showToast('You are up to date');
+      });
+    }
+
+    const btnCheckUpdates = document.getElementById('btn-check-updates');
+    if (btnCheckUpdates) {
+      btnCheckUpdates.addEventListener('click', () => {
+        userTriggeredUpdate = true;
+        if (window.electronAPI.checkForUpdates) {
+          window.electronAPI.checkForUpdates();
+        }
+      });
+    }
+
+    if (window.electronAPI.getAppVersion) {
+      window.electronAPI.getAppVersion().then((version) => {
+        const elAboutVersion = document.getElementById('about-version');
+        if (elAboutVersion) elAboutVersion.textContent = 'Version ' + version;
+      }).catch(() => {});
+    }
   }
 
   loadHomePage();

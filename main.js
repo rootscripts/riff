@@ -317,6 +317,7 @@ function runGUI() {
 
       app.whenReady().then(() => {
         createWindow();
+        require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {
           if (BrowserWindow.getAllWindows().length === 0) createWindow();
         });
