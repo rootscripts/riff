@@ -1,0 +1,15 @@
+node_modules/
+dist/
+bin/yt-dlp
+bin/yt-dlp.exe
+bin/ffmpeg
+bin/ffmpeg.exe
+bin/ffprobe
+bin/ffprobe.exe
+*.log
+.DS_Store
+.env
+.riff_progress.md
+RIFF_*.md
+riff_*.md
+strip_comments.js
