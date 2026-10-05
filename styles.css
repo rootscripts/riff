@@ -84,7 +84,6 @@ html {
   transition: background-color var(--transition-emphasized), color var(--transition-emphasized);
 }
 
-/* Wayland Fractional Scaling Fix: Use absolute positioning instead of vw/vh to prevent scrollbars */
 body {
   background: var(--md-sys-color-background) !important;
   color: var(--md-sys-color-on-surface);
