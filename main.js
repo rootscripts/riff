@@ -3,14 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// --- WAYLAND & INTEL MESA FIXES ---
-// Must be set before app.whenReady() to prevent buffer flicker and click offsets
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations,UseOzonePlatform,WaylandFractionalScaleV1');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 
-  // Fix Intel GPU Mesa buffer flickering and fractional scaling glitches
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
   app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('enable-zero-copy');
