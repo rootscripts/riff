@@ -162,7 +162,6 @@ async function ensureTools() {
   return toolsStatus();
 }
 
-// Only updates the copy that Riff downloaded itself; a user-installed yt-dlp is never touched.
 async function updateYtDlpIfManaged() {
   const bin = resolveBinary('yt-dlp');
   if (!bin || path.dirname(bin) !== BIN_DIR) return false;
