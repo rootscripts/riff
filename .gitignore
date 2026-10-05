@@ -9,8 +9,4 @@ bin/ffprobe.exe
 *.log
 .DS_Store
 .env
-.riff_progress.md
-RIFF_*.md
-riff_*.md
-strip_comments.js
 dev-app-update.yml
