@@ -150,6 +150,8 @@ More detailed information about the source structure and build process can be ad
 
 ## Notes
 
+Developed for educational and personal media management purposes only. Users are responsible for complying with local copyright laws and the terms of service of any third-party streaming platforms.
+
 Riff is primarily intended for personal use with music you are allowed to download and store.
 
 When downloading content from third-party services, make sure your use of that content follows the service's rules and the laws that apply to you.
