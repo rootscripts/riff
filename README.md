@@ -17,6 +17,7 @@ Riff can get tracks from YouTube and SoundCloud, store them locally, and add the
 Riff can download audio from:
 
 * YouTube
+* YT Music
 * SoundCloud
 
 Downloaded tracks can be added to the local library and played without an internet connection
