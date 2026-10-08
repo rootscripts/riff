@@ -19,6 +19,7 @@
 
   <div id="bg-mesh-a" class="bg-mesh-layer"></div>
   <div id="bg-mesh-b" class="bg-mesh-layer"></div>
+  <div id="custom-bg"></div>
 
   <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
     <defs id="m3-dynamic-defs">
@@ -43,6 +44,9 @@
       </div>
     </div>
     <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-mini-player" title="Compact mini player">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="11" y="11" width="8" height="8" rx="1"/></svg>
+      </button>
       <button class="titlebar-btn" id="btn-minimize" title="Minimize">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
@@ -58,10 +62,12 @@
   <div class="top-nav">
     <div class="search-box-wrapper">
       <div class="search-box">
-        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="7"></circle>
-          <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
-        </svg>
+        <button id="search-icon-btn" class="search-icon-btn" title="Search" type="button">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+          </svg>
+        </button>
         <input type="text" id="search-input" placeholder="Search tracks, artists, or albums..." autocomplete="off">
         <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -76,6 +82,12 @@
             <path d="M21.58 7.19c-.23-.86-.91-1.54-1.77-1.77C18.25 5 12 5 12 5s-6.25 0-7.81.42c-.86.23-1.54.91-1.77 1.77C2 8.75 2 12 2 12s0 3.25.42 4.81c.23.86.91 1.54 1.77 1.77C5.75 19 12 19 12 19s6.25 0 7.81-.42c.86-.23 1.54-.91 1.77-1.77C22 15.25 22 12 22 12s0-3.25-.42-4.81zM10 15V9l5.2 3L10 15z"/>
           </svg>
           <span>YouTube</span>
+        </button>
+        <button class="platform-btn" data-platform="ytmusic" id="platform-ytm" title="YouTube Music">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-12.5v9l6-4.5-6-4.5z"/>
+          </svg>
+          <span>YouTube Music</span>
         </button>
         <button class="platform-btn" data-platform="soundcloud" id="platform-sc" title="SoundCloud">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -110,6 +122,15 @@
           </div>
         </button>
 
+        <button class="nav-item" data-view="local" id="nav-local" title="My files">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span class="nav-badge" id="local-count">0</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-view="history" id="nav-history" title="History">
           <div class="nav-indicator">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -132,15 +153,15 @@
             <span class="nav-badge" id="queue-count">0</span>
           </div>
         </button>
+
+        <div class="rail-divider"></div>
+
+        <button class="nav-item" data-view="settings" id="nav-settings" title="Settings">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          </div>
+        </button>
       </nav>
-
-      <div class="rail-divider"></div>
-
-      <button class="nav-item" data-view="settings" id="nav-settings" title="Settings">
-        <div class="nav-indicator">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-        </div>
-      </button>
 
       <div class="rail-divider"></div>
 
@@ -271,6 +292,32 @@
         </div>
       </section>
 
+      <section class="content-view" id="view-local">
+        <div class="view-header">
+          <div>
+            <h2>My files</h2>
+            <span class="view-subtitle" id="local-subtitle">0 tracks in library</span>
+          </div>
+          <button class="btn-outline-pill" id="btn-add-local-files">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Add files
+          </button>
+        </div>
+        <div class="view-search-box" id="local-search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+          <input type="text" class="view-search-input" id="local-search-input" placeholder="Search my files..." autocomplete="off">
+        </div>
+        <div class="tracks-list" id="local-tracks-list">
+          <div class="empty-hint" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+            <span>No local tracks in library yet.</span>
+            <button class="btn-outline-pill" id="btn-add-local-files-empty">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Add files
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section class="content-view" id="view-history">
         <div class="view-header">
           <h2>History</h2>
@@ -364,9 +411,64 @@
         <div class="settings-view">
           <h2 class="section-title">Settings</h2>
 
-          <div class="settings-section">
-            <span class="settings-section-title">Appearance</span>
+          <div class="settings-layout">
+            <nav class="settings-nav" id="settings-nav">
+              <button class="settings-nav-btn" data-cat="appearance">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="13.5" cy="6.5" r=".5"/>
+                  <circle cx="17.5" cy="10.5" r=".5"/>
+                  <circle cx="8.5" cy="7.5" r=".5"/>
+                  <circle cx="6.5" cy="12.5" r=".5"/>
+                  <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-4.9-4.5-8.4-10-8.4z"/>
+                </svg>
+                <span>Customization</span>
+              </button>
+              <button class="settings-nav-btn" data-cat="integrations">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22v-5"/>
+                  <path d="M9 8V2"/>
+                  <path d="M15 8V2"/>
+                  <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>
+                </svg>
+                <span>Integrations</span>
+              </button>
+              <button class="settings-nav-btn" data-cat="storage">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" x2="2" y1="12" y2="12"/>
+                  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+                  <line x1="6" x2="6.01" y1="16" y2="16"/>
+                  <line x1="10" x2="10.01" y1="16" y2="16"/>
+                </svg>
+                <span>Storage</span>
+              </button>
+              <button class="settings-nav-btn" data-cat="advanced">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="21" x2="14" y1="4" y2="4"/>
+                  <line x1="10" x2="3" y1="4" y2="4"/>
+                  <line x1="21" x2="12" y1="12" y2="12"/>
+                  <line x1="8" x2="3" y1="12" y2="12"/>
+                  <line x1="21" x2="16" y1="20" y2="20"/>
+                  <line x1="12" x2="3" y1="20" y2="20"/>
+                  <line x1="14" x2="14" y1="2" y2="6"/>
+                  <line x1="8" x2="8" y1="10" y2="14"/>
+                  <line x1="16" x2="16" y1="18" y2="22"/>
+                </svg>
+                <span>Advanced</span>
+              </button>
+              <button class="settings-nav-btn" data-cat="about">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4"/>
+                  <path d="M12 8h.01"/>
+                </svg>
+                <span>About</span>
+              </button>
+            </nav>
+            <div class="settings-pane">
+              <div class="settings-section" data-cat="appearance">
+                <span class="settings-section-title">Appearance</span>
 
+                <div class="m3-group">
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Theme mode</span>
@@ -452,9 +554,12 @@
             </div>
 
             <div class="setting-item">
-              <div class="setting-item-top">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <span class="setting-name">Mesh gradient brightness</span>
-                <span class="setting-value" id="val-mesh-brightness">100%</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button class="btn-outline-pill" id="btn-configure-mesh" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Configure</button>
+                  <span class="setting-value" id="val-mesh-brightness">100%</span>
+                </div>
               </div>
               <input type="range" class="pill-range" id="slider-mesh-brightness" min="0" max="100" step="5" value="100">
               <div class="setting-hints"><span>Off</span><span>Subtle</span><span>Full</span></div>
@@ -487,8 +592,55 @@
               <div class="setting-hints"><span>Sharp</span><span>16px</span><span>Round</span></div>
             </div>
 
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Interface opacity</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-ui-alpha">100%</span>
+                  <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="100">
+              <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Text opacity</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-text-alpha">100%</span>
+                  <button class="btn-outline-pill" id="btn-reset-text-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-text-alpha" min="1" max="100" step="1" value="100">
+              <div class="setting-hints"><span>1%</span><span>Default</span><span>100%</span></div>
+            </div>
+                </div>
+
             <div class="settings-subgroup">
               <span class="settings-subgroup-title">Banners</span>
+
+              <div class="m3-group">
+              <div class="setting-item">
+                <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                  <span class="setting-name">Banner media</span>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn-outline-pill" id="btn-choose-banner-media">Choose file</button>
+                    <button class="btn-outline-pill" id="btn-reset-banner-media">Reset to track art</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-item" id="setting-banner-fit-row">
+                <div class="setting-item-top">
+                  <span class="setting-name">Banner fit</span>
+                </div>
+                <select class="pill-select" id="select-banner-fit" style="width: 100%; margin-top: 6px;">
+                  <option value="fit">Fit</option>
+                  <option value="zoom">Zoom</option>
+                  <option value="stretch">Stretch</option>
+                </select>
+              </div>
 
               <div class="setting-item">
                 <div class="setting-item-top">
@@ -516,12 +668,75 @@
                 <input type="range" class="pill-range" id="slider-banner-fade" min="20" max="100" step="2" value="38">
                 <div class="setting-hints"><span>Top</span><span>Default</span><span>Deep</span></div>
               </div>
+              </div>
+            </div>
+
+            <div class="m3-group">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Show My files tab</span>
+                <button class="effect-switch-btn active" id="btn-show-local"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">No-Hand cursor</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replaces the hand and grab cursors with the normal arrow</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-no-hand-cursor"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Performance mode</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Disables visualizers, animated gradient and blur effects, limits animations to 30 FPS</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-perf-mode"><span class="thumb"></span></button>
+              </div>
+            </div>
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-cat="appearance">
+            <span class="settings-section-title">Custom background</span>
+
+            <div class="m3-group">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Background media</span>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-outline-pill" id="btn-choose-custom-bg">Choose file</button>
+                  <button class="btn-outline-pill" id="btn-remove-custom-bg">Remove</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Opacity</span>
+                <span class="setting-value" id="val-bg-opacity">100%</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-bg-opacity" min="5" max="100" step="5" value="100">
+              <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Blur</span>
+                <span class="setting-value" id="val-bg-blur">0px</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-bg-blur" min="0" max="40" step="1" value="0">
+              <div class="setting-hints"><span>0px</span><span>20px</span><span>40px</span></div>
+            </div>
+            </div>
+          </div>
+
+          <div class="settings-section" data-cat="integrations">
             <span class="settings-section-title">Integrations</span>
 
+            <div class="m3-group">
             <div class="setting-item" id="card-discord-rpc">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -533,11 +748,77 @@
                 <button class="effect-switch-btn active" id="btn-discord-rpc"><span class="thumb"></span></button>
               </div>
             </div>
+
+            <div class="setting-item" id="card-spotify-import">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Spotify Import</span>
+                <button class="btn-pill-primary" id="btn-open-spotify-import" type="button" style="display: flex; align-items: center; gap: 8px;">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
+                  <span>Import from Spotify</span>
+                </button>
+              </div>
+            </div>
+            </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-cat="appearance">
+            <span class="settings-section-title">Playback</span>
+            <div class="m3-group">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Smooth preset transitions</span>
+                <button class="effect-switch-btn active" id="btn-smooth-presets"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Wavy progress bar</span>
+                <button class="effect-switch-btn active" id="btn-wavy-progress"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Crossfade</span>
+                <span class="setting-value" id="val-crossfade">Off</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-crossfade" min="0" max="12" step="1" value="0">
+              <div class="setting-hints"><span>Off</span><span>6s</span><span>12s</span></div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Lyrics translation</span>
+                <button class="effect-switch-btn" id="btn-tr-enabled"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item" id="setting-tr-lang-row">
+              <div class="setting-item-top">
+                <span class="setting-name">Translation language</span>
+              </div>
+              <select class="pill-select" id="select-tr-lang" style="width: 100%; margin-top: 6px;">
+                <option value="en">English (en)</option>
+                <option value="ru">Russian (ru)</option>
+                <option value="es">Spanish (es)</option>
+                <option value="de">German (de)</option>
+                <option value="fr">French (fr)</option>
+                <option value="pt">Portuguese (pt)</option>
+                <option value="ja">Japanese (ja)</option>
+                <option value="ko">Korean (ko)</option>
+                <option value="zh-CN">Chinese (zh-CN)</option>
+              </select>
+            </div>
+            <div class="setting-item" id="setting-tr-auto-row">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Auto-translate</span>
+                <button class="effect-switch-btn" id="btn-tr-auto"><span class="thumb"></span></button>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div class="settings-section" data-cat="storage">
             <span class="settings-section-title">Storage</span>
 
+            <div class="m3-group">
             <div class="setting-item clickable clear-cache-row" id="btn-open-clear-cache">
               <div class="setting-item-top" style="cursor: pointer; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -584,9 +865,11 @@
                 <button class="btn-outline-pill" id="btn-clear-offline" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Clear</button>
               </div>
             </div>
+            </div>
           </div>
 
-          <div class="settings-section" id="settings-section-advanced">
+
+          <div class="settings-section" id="settings-section-advanced" data-cat="advanced">
             <button class="adv-section-header" id="btn-toggle-adv-section" type="button">
               <span class="settings-section-title" style="margin-bottom: 0;">Advanced</span>
               <svg class="adv-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -597,6 +880,27 @@
             <div class="adv-collapsible-wrapper" id="adv-collapsible-wrapper">
               <div class="adv-collapsible-inner">
                 <div class="adv-items-list">
+                  <div class="m3-group">
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Minimize to tray on close</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Keep running in background when window is closed</span>
+                      </div>
+                      <button class="effect-switch-btn active" id="btn-tray-on-close"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+
+                  <div class="setting-item" id="setting-win-media-keys" style="display: none;">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Capture media keys (Windows)</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Turn off if another app should receive your media keys</span>
+                      </div>
+                      <button class="effect-switch-btn active" id="btn-win-media-keys"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+
                   <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -677,25 +981,35 @@
                     </div>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="settings-section" id="settings-section-about">
+          <div class="settings-section" id="settings-section-about" data-cat="about">
             <span class="settings-section-title">About</span>
+            <div class="m3-group">
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <div style="width: 32px; height: 32px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                    <img src="assets/icon.png" alt="Riff" style="width: 32px; height: 32px; object-fit: cover;">
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 41.0.0</span>
                   </div>
                 </div>
                 <button class="btn-outline-pill" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
               </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Keyboard shortcuts</span>
+                <button class="btn-outline-pill" id="btn-open-shortcuts" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Keyboard shortcuts</button>
+              </div>
+            </div>
             </div>
           </div>
 
@@ -706,7 +1020,9 @@
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v40.32.1</span>
+            <span class="settings-version-tag">v41.0.0</span>
+          </div>
+            </div>
           </div>
         </div>
       </section>
@@ -715,7 +1031,6 @@
     <aside class="right-panel lyrics-empty" id="right-panel">
       <div class="right-panel-banner" id="right-panel-banner"><div class="banner-image"></div></div>
       <div class="right-panel-header">
-        <span class="right-panel-label">Now playing</span>
         <div class="right-panel-header-actions">
           <button class="lyrics-mode-btn" id="btn-lyrics-mode" title="Toggle line mode">
             <span>Line</span>
@@ -733,16 +1048,20 @@
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
           </div>
           <div class="vinyl-overlay hidden" id="vinyl-overlay"></div>
+          <button id="btn-right-panel-art" title="Change cover/banner for this track" aria-label="Change cover/banner for this track">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </button>
         </div>
         <div class="right-panel-meta">
-          <h3 class="right-panel-title" id="right-panel-title">No track playing</h3>
+          <div class="right-panel-title-row" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0;">
+            <h3 class="right-panel-title" id="right-panel-title" style="flex: 1; min-width: 0;">No track playing</h3>
+          </div>
           <span class="right-panel-artist" id="right-panel-artist">Select a track to listen</span>
         </div>
       </div>
 
       <div class="lyrics-section">
         <div class="lyrics-header">
-          <span class="lyrics-label">Lyrics</span>
           <div class="lyrics-header-actions">
             <button class="lyrics-action-btn" id="btn-add-custom-lyrics" title="Edit lyrics" aria-label="Edit lyrics">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
@@ -752,7 +1071,12 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
               <span>Sync</span>
             </button>
-            <span class="lyrics-status" id="lyrics-status">Synced</span>
+            <button class="lyrics-action-btn hidden" id="btn-translate-lyrics" title="Translate lyrics" aria-label="Translate lyrics">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.11 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+            </button>
+            <button class="lyrics-action-btn" id="btn-tv-karaoke" title="Fullscreen karaoke" aria-label="Fullscreen karaoke">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
           </div>
         </div>
         <div class="lyrics-container" id="lyrics-container"></div>
@@ -1047,6 +1371,35 @@
           <input type="range" class="pill-range" id="slider-echo" min="0" max="100" step="1" value="0">
           <div class="setting-hints"><span>0%</span><span>50%</span><span>100%</span></div>
         </div>
+
+        <div class="setting-item">
+          <div class="setting-item-top">
+            <span class="setting-name">Equalizer</span>
+          </div>
+          <div class="eq-bands">
+            <div class="eq-band">
+              <span class="eq-val" id="val-eq-low">0 dB</span>
+              <div class="eq-slider-wrap">
+                <input type="range" class="pill-range" id="slider-eq-low" min="-12" max="12" step="1" value="0">
+              </div>
+              <span class="eq-name">Low</span>
+            </div>
+            <div class="eq-band">
+              <span class="eq-val" id="val-eq-mid">0 dB</span>
+              <div class="eq-slider-wrap">
+                <input type="range" class="pill-range" id="slider-eq-mid" min="-12" max="12" step="1" value="0">
+              </div>
+              <span class="eq-name">Mid</span>
+            </div>
+            <div class="eq-band">
+              <span class="eq-val" id="val-eq-high">0 dB</span>
+              <div class="eq-slider-wrap">
+                <input type="range" class="pill-range" id="slider-eq-high" min="-12" max="12" step="1" value="0">
+              </div>
+              <span class="eq-name">High</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="settings-footer">
@@ -1106,13 +1459,94 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="mesh-customizer-modal">
+    <div class="settings-card mesh-customizer-card" style="width: 360px;">
+      <div class="settings-card-header">
+        <div class="settings-title-group">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+            <path d="M2 12h20"></path>
+          </svg>
+          <h3>Mesh gradient</h3>
+        </div>
+        <button class="btn-icon-pill" id="btn-close-mesh-modal" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div style="display: flex; justify-content: center; width: 100%;">
+        <div id="mesh-preview-box" class="mesh-preview-box">
+          <div id="mesh-preview-bg" class="mesh-preview-bg"></div>
+          <div id="mesh-dot-1" class="mesh-dot" tabindex="0" role="slider" aria-label="Gradient point 1" title="Point 1">1</div>
+          <div id="mesh-dot-2" class="mesh-dot" tabindex="0" role="slider" aria-label="Gradient point 2" title="Point 2">2</div>
+        </div>
+      </div>
+
+      <div class="setting-item" style="margin-top: 4px;">
+        <div class="setting-item-top">
+          <span class="setting-name">Speed</span>
+          <span class="setting-value" id="val-mesh-speed">0 (static)</span>
+        </div>
+        <input type="range" class="pill-range" id="slider-mesh-speed" min="0" max="100" step="1" value="0">
+        <div class="setting-hints"><span>0 (Static)</span><span>50</span><span>100</span></div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-item-top">
+          <span class="setting-name">Blur</span>
+          <span class="setting-value" id="val-mesh-blur">0px</span>
+        </div>
+        <input type="range" class="pill-range" id="slider-mesh-blur" min="0" max="60" step="2" value="0">
+        <div class="setting-hints"><span>0px</span><span>30px</span><span>60px</span></div>
+      </div>
+
+      <div class="dialog-actions" style="justify-content: flex-end; margin-top: 4px;">
+        <button class="btn-outline-pill" id="btn-reset-mesh">Reset</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="tools-install-modal">
-    <div class="dialog-card">
-      <h3>Download required tools?</h3>
-      <p style="margin: 0 0 16px; color: var(--md-sys-color-on-surface-variant); font-size: calc(14px * var(--font-scale, 1));">Riff needs yt-dlp and ffmpeg to play and save tracks. They are downloaded from their official GitHub releases into Riff's own folder and need about 400 MB of disk space. Nothing else on your system is changed.</p>
-      <div class="dialog-actions">
+    <div class="dialog-card tools-install-card" style="width: 420px;">
+      <div class="dialog-header">
+        <h3 id="tools-modal-title">Required tools</h3>
+        <button class="btn-icon-pill" id="btn-close-tools-modal" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <p id="tools-modal-desc" style="margin: 0; color: var(--md-sys-color-on-surface-variant); font-size: calc(13px * var(--font-scale, 1)); line-height: 1.4;">Riff needs yt-dlp and ffmpeg to play and save tracks (~400 MB).</p>
+
+      <div class="tools-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px;">
+        <div class="tools-row" id="tools-row-ytdlp" style="background: var(--md-sys-color-surface-container); border-radius: var(--md-shape-corner-m); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-weight: 600; font-size: calc(14px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface);">yt-dlp</span>
+              <span id="tools-pct-ytdlp" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"></span>
+            </div>
+            <div class="tools-status-icon" id="tools-icon-ytdlp"></div>
+          </div>
+          <div id="tools-wavy-ytdlp" class="tools-wavy-wrap" style="display: none;"></div>
+        </div>
+
+        <div class="tools-row" id="tools-row-ffmpeg" style="background: var(--md-sys-color-surface-container); border-radius: var(--md-shape-corner-m); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-weight: 600; font-size: calc(14px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface);">ffmpeg</span>
+              <span id="tools-pct-ffmpeg" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"></span>
+            </div>
+            <div class="tools-status-icon" id="tools-icon-ffmpeg"></div>
+          </div>
+          <div id="tools-wavy-ffmpeg" class="tools-wavy-wrap" style="display: none;"></div>
+        </div>
+      </div>
+
+      <div id="tools-error-msg" style="display: none; color: var(--md-sys-color-error, #ffb4ab); font-size: calc(12px * var(--font-scale, 1)); background: rgba(255, 84, 73, 0.1); border-radius: 8px; padding: 8px 12px; word-break: break-word;"></div>
+
+      <div class="dialog-actions" id="tools-dialog-actions" style="margin-top: 6px;">
         <button class="btn-outline-pill" id="btn-dismiss-tools-modal">Not now</button>
         <button class="btn-pill-primary" id="btn-confirm-install-tools">Download</button>
+        <button class="btn-pill-primary" id="btn-retry-tools" style="display: none;">Retry</button>
       </div>
     </div>
   </div>
@@ -1139,6 +1573,38 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="spotify-import-modal">
+    <div class="dialog-card">
+      <h3>Import from Spotify</h3>
+      <div style="position: relative; width: 100%; margin-bottom: 12px;">
+        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; color: var(--md-sys-color-on-surface-variant); pointer-events: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+        </span>
+        <input type="text" id="spotify-import-url" class="pill-text-input" placeholder="URL" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+        <label class="dialog-label">Import into</label>
+        <select class="pill-select" id="spotify-import-target" style="width: 100%;">
+          <option value="new">New playlist (Spotify name)</option>
+        </select>
+      </div>
+      <div id="spotify-import-progress-wrap" class="hidden" style="margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div id="spotify-import-wavy-container" style="width: 100%;"></div>
+        <span id="spotify-import-progress-label" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant);">0 / 0</span>
+      </div>
+      <div id="spotify-import-status" class="hidden" style="margin-bottom: 16px; font-size: calc(13px * var(--font-scale, 1));"></div>
+      <div class="dialog-actions">
+        <button class="btn-outline-pill" id="btn-cancel-spotify-import" type="button">Cancel</button>
+        <button class="btn-pill-primary" id="btn-confirm-spotify-import" type="button" style="display: flex; align-items: center; gap: 8px;">
+          <span id="spotify-import-btn-icon" style="display: flex; align-items: center;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
+          </span>
+          <span id="spotify-import-btn-text">Import from Spotify</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="add-to-playlist-modal">
     <div class="dialog-card">
       <h3>Add to playlist</h3>
@@ -1156,6 +1622,80 @@
       <div class="dialog-actions">
         <button class="btn-outline-pill" id="btn-cancel-clear-offline">Cancel</button>
         <button class="btn-pill-primary" id="btn-confirm-clear-offline">Delete all</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal-backdrop hidden" id="track-art-modal">
+    <div class="dialog-card modal-content" style="width: 460px; max-width: min(460px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 16px;">
+      <div class="dialog-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="track-art-modal-title" style="margin: 0; font-size: calc(16px * var(--font-scale, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Customize track art</h3>
+        <button class="btn-icon-pill" id="btn-close-track-art-modal" title="Close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="track-art-rows" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+            <div id="track-art-cover-preview" style="width: 48px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--md-sys-color-surface-container-high); flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+              <img id="track-art-cover-img" src="" alt="" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+              <svg id="track-art-cover-placeholder" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--md-sys-color-on-surface-variant);"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            </div>
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span class="setting-name" style="font-weight: 500;">Cover</span>
+              <span class="setting-hint" id="track-art-cover-status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Default art</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button class="btn-outline-pill" id="btn-choose-track-cover">Choose file</button>
+            <button class="btn-outline-pill" id="btn-reset-track-cover">Reset</button>
+          </div>
+        </div>
+
+        <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+            <div id="track-art-banner-preview" style="width: 80px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--md-sys-color-surface-container-high); flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative;">
+              <img id="track-art-banner-img" src="" alt="" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+              <video id="track-art-banner-vid" src="" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover; display: none;"></video>
+              <svg id="track-art-banner-placeholder" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--md-sys-color-on-surface-variant);"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="8" cy="12" r="1.5"></circle><polyline points="22 15 17 11 11 16"></polyline></svg>
+            </div>
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span class="setting-name" style="font-weight: 500;">Banner</span>
+              <span class="setting-hint" id="track-art-banner-status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Default / Global</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button class="btn-outline-pill" id="btn-choose-track-banner">Choose file</button>
+            <button class="btn-outline-pill" id="btn-reset-track-banner">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="shortcuts-modal">
+    <div class="dialog-card" style="width: 440px; max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="dialog-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="margin: 0;">Keyboard shortcuts</h3>
+        <button class="btn-icon-pill" id="btn-close-shortcuts-modal" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); padding-right: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Play / Pause</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap wide">Space</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Next / Previous</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap wide">Ctrl</span><span style="color: var(--md-sys-color-on-surface-variant);">+</span><span class="keycap">→</span><span style="color: var(--md-sys-color-on-surface-variant);">/</span><span class="keycap">←</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Seek ±5s</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap wide">Shift</span><span style="color: var(--md-sys-color-on-surface-variant);">+</span><span class="keycap">→</span><span style="color: var(--md-sys-color-on-surface-variant);">/</span><span class="keycap">←</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Volume ±5%</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap wide">Ctrl</span><span style="color: var(--md-sys-color-on-surface-variant);">+</span><span class="keycap">↑</span><span style="color: var(--md-sys-color-on-surface-variant);">/</span><span class="keycap">↓</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Mute / Unmute</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">M</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Shuffle</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">H</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Repeat</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">R</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Lyrics</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">L</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>TV Karaoke</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">F</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Mini player</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">P</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Search</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap">/</span><span style="color: var(--md-sys-color-on-surface-variant);">or</span><span class="keycap wide">Ctrl</span><span style="color: var(--md-sys-color-on-surface-variant);">+</span><span class="keycap">K</span></div></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span>Close / Blur</span><div style="display: flex; align-items: center; gap: 6px;"><span class="keycap wide">Esc</span></div></div>
       </div>
     </div>
   </div>
@@ -1279,6 +1819,8 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="update-modal"><div class="settings-card"><div class="settings-card-header"><div class="settings-title-group"><h3 id="update-title">Update available</h3></div><button class="btn-icon-pill" id="btn-close-update" title="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div><p id="update-text" class="custom-lyrics-desc"></p><div class="update-progress hidden" id="update-progress"><i></i></div><div class="download-modal-actions"><button class="btn-outline-pill" id="btn-update-ignore">Skip this version</button><button class="btn-outline-pill" id="btn-update-later">Install on exit</button><button class="btn-pill-primary" id="btn-update-now">Update now</button></div></div></div>
+
   <div class="modal-backdrop hidden" id="sync-mode-overlay">
     <div class="settings-card sync-mode-card">
       <div class="settings-card-header">
@@ -1307,6 +1849,41 @@
       </div>
 
       <div class="sync-mode-lyrics" id="sync-mode-lyrics"></div>
+    </div>
+  </div>
+
+  <div class="tv-karaoke hidden" id="tv-karaoke">
+    <div class="tv-bg" id="tv-bg"></div>
+    <button class="tv-karaoke-close" id="btn-close-tv-karaoke" title="Close (Esc)" aria-label="Close">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+    <div class="tv-karaoke-layout">
+      <div class="tv-side">
+        <img class="tv-cover" id="tv-cover" src="" alt="">
+        <div class="tv-karaoke-meta" id="tv-karaoke-meta">
+          <div class="tv-karaoke-title" id="tv-karaoke-title"></div>
+          <div class="tv-karaoke-artist" id="tv-karaoke-artist"></div>
+        </div>
+        <div class="tv-controls">
+          <div class="tv-progress"><span class="tv-cur">0:00</span><div class="tv-bar"><i></i></div><span class="tv-dur">0:00</span></div>
+          <div class="tv-buttons">
+            <button id="btn-tv-prev" title="Previous" aria-label="Previous">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line></svg>
+            </button>
+            <button id="btn-tv-play" title="Play or pause" aria-label="Play or pause">
+              <svg id="tv-play-icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19"></polygon></svg>
+              <svg id="tv-pause-icon" class="hidden" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+            </button>
+            <button id="btn-tv-next" title="Next" aria-label="Next">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="tv-karaoke-content" id="tv-karaoke-content"></div>
     </div>
   </div>
 

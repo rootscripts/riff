@@ -8,12 +8,13 @@ const { spawn } = require("child_process");
 const { StringDecoder } = require("string_decoder");
 
 const PORT = 38472;
-const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, ytDlpCommand } = require('./platform');
+const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand } = require('./platform');
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
 if (!fs.existsSync(LYRICS_DIR)) fs.mkdirSync(LYRICS_DIR, { recursive: true });
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
+if (!fs.existsSync(LIBRARY_DIR)) fs.mkdirSync(LIBRARY_DIR, { recursive: true });
 
 let trackMetadataIndex = {};
 try {
@@ -36,11 +37,27 @@ function saveTrackMetadata(cleanId, meta) {
   } catch (e) {}
 }
 
+let libraryIndex = {};
+try {
+  if (fs.existsSync(LIBRARY_PATH)) {
+    libraryIndex = JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));
+  }
+} catch (e) {
+  libraryIndex = {};
+}
+
+function saveLibraryIndex() {
+  try {
+    fs.writeFileSync(LIBRARY_PATH, JSON.stringify(libraryIndex, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
 const searchCache = new Map();
 const streamUrlCache = new Map();
 const lyricsCache = new Map();
 const artistCache = new Map();
 const vibeCache = new Map();
+const ytArtistCache = new Map();
 const downloadingSet = new Set();
 const prefetchingSet = new Set();
 
@@ -703,6 +720,97 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
     } catch (e) {}
   }
 
+  if (platform === 'ytmusic') {
+    try {
+      const args = ['--flat-playlist', '--playlist-end', String(limit), '-J', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`];
+      const raw = await executeYtDlp(args, 25000);
+      const data = JSON.parse(raw);
+      const rawEntries = (data.entries || []).slice(0, limit);
+
+      function extractArtist(item) {
+        let a = '';
+        if (Array.isArray(item.artists) && item.artists.length > 0) a = item.artists.join(', ');
+        else if (item.artist) a = item.artist;
+        else if (item.creator) a = item.creator;
+        else if (item.channel) a = item.channel;
+        else if (item.uploader) a = item.uploader;
+        return a ? a.replace(/\s*-\s*Topic$/i, '').trim() : '';
+      }
+
+      const toFetch = [];
+      for (let i = 0; i < Math.min(10, rawEntries.length); i++) {
+        const item = rawEntries[i];
+        const flatA = extractArtist(item);
+        if (flatA) {
+          item._artist = flatA;
+        } else if (ytArtistCache.has(item.id)) {
+          item._artist = ytArtistCache.get(item.id);
+        } else {
+          toFetch.push(item);
+        }
+      }
+
+      if (toFetch.length > 0) {
+        let fIdx = 0;
+        const fetchWorker = async () => {
+          while (fIdx < toFetch.length) {
+            const item = toFetch[fIdx++];
+            try {
+              const out = await executeYtDlp([
+                '--skip-download',
+                '--no-playlist',
+                '--print',
+                '%(artist,artists.0,channel,uploader)s',
+                `https://www.youtube.com/watch?v=${item.id}`
+              ], 10000);
+              const lines = (out || '').split('\n').map(s => s.trim()).filter(s => s && s !== 'NA');
+              if (lines.length > 0) {
+                const val = lines[0].replace(/\s*-\s*Topic$/i, '').trim();
+                if (val) {
+                  item._artist = val;
+                  ytArtistCache.set(item.id, val);
+                }
+              }
+            } catch (e) {}
+          }
+        };
+        const workers = Array.from({ length: Math.min(5, toFetch.length) }, () => fetchWorker());
+        await Promise.all(workers);
+      }
+
+      const entries = await Promise.all(rawEntries.map(async (item) => {
+        let thumbnail = `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+        if (item.thumbnails && item.thumbnails.length > 0) {
+          thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+        } else if (item.thumbnail) {
+          thumbnail = item.thumbnail;
+        }
+        const artistVal = item._artist || ytArtistCache.get(item.id) || extractArtist(item) || 'Unknown Artist';
+        const isCached = await findCachedFile(item.id);
+        return {
+          id: String(item.id),
+          title: item.title || 'untitled',
+          artist: artistVal,
+          duration: item.duration || 0,
+          thumbnail: thumbnail,
+          url: `https://www.youtube.com/watch?v=${item.id}`,
+          platform: 'youtube',
+          isCached: !!isCached
+        };
+      }));
+      const result = { success: true, tracks: entries };
+      searchCache.set(cacheKey, result);
+      setTimeout(() => {
+        if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
+      }, 60);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, tracks: [], error: 'YouTube Music is unavailable' }));
+    }
+  }
+
   const prefix = platform === 'soundcloud' ? `scsearch${limit}:` : `ytsearch${limit}:`;
   const args = [
     `${prefix}${query}`,
@@ -1001,6 +1109,64 @@ async function handleLocalTrack(req, res, trackId) {
   }
 }
 
+const LIBRARY_MIME_TYPES = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.opus': 'audio/ogg; codecs=opus',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.webm': 'audio/webm',
+  '.weba': 'audio/webm'
+};
+
+async function handleLibraryFile(req, res, trackId) {
+  const item = libraryIndex[trackId];
+  if (!item || !item.file) {
+    res.writeHead(404);
+    return res.end('File not found in library');
+  }
+
+  const filePath = path.join(LIBRARY_DIR, item.file);
+  try {
+    const stat = await fs.promises.stat(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes'
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (e) {
+    res.writeHead(404);
+    res.end('File not found in library');
+  }
+}
+
 function handleAudioProxy(req, res, targetUrl) {
   if (!targetUrl) {
     res.writeHead(400);
@@ -1176,15 +1342,29 @@ function fetchLyricsDirect(title, artist) {
   });
 }
 
-function getCustomLyricsPath(title, artist) {
+const crypto = require('crypto');
+
+function legacyCustomLyricsPath(title, artist) {
   const safeName = `${(artist || 'unknown').replace(/[^\w\s-]/g, '_')}_${(title || 'untitled').replace(/[^\w\s-]/g, '_')}.lrc`.toLowerCase().replace(/\s+/g, '_');
   return path.join(CUSTOM_LYRICS_DIR, safeName);
 }
 
-function getFetchedLyricsPath(title, artist) {
+function legacyFetchedLyricsPath(title, artist) {
   const cleanTitle = (title || '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
   const cleanArtist = (artist || '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
   return path.join(LYRICS_DIR, `${cleanArtist}___${cleanTitle}.lrc`);
+}
+
+function lyricsKey(title, artist) {
+  return crypto.createHash('sha1').update(`${(artist || '').trim().toLowerCase()}\u0000${(title || '').trim().toLowerCase()}`).digest('hex').slice(0, 16);
+}
+
+function getCustomLyricsPath(title, artist) {
+  return path.join(CUSTOM_LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
+}
+
+function getFetchedLyricsPath(title, artist) {
+  return path.join(LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
 }
 
 async function handleLyrics(req, res, title, artist, allowOnline = true) {
@@ -1195,7 +1375,14 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
     return res.end(JSON.stringify({ success: true, lyrics: cached.text, isCustom: cached.isCustom || false }));
   }
 
-  const customPath = getCustomLyricsPath(title, artist);
+  let customPath = getCustomLyricsPath(title, artist);
+  if (!fs.existsSync(customPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
+    const legacyPath = legacyCustomLyricsPath(title, artist);
+    if (fs.existsSync(legacyPath)) {
+      customPath = legacyPath;
+    }
+  }
+
   if (fs.existsSync(customPath)) {
     try {
       const customLyrics = await fs.promises.readFile(customPath, 'utf-8');
@@ -1205,7 +1392,14 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
     } catch (e) {}
   }
 
-  const fetchedLyricsPath = getFetchedLyricsPath(title, artist);
+  let fetchedLyricsPath = getFetchedLyricsPath(title, artist);
+  if (!fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
+    const legacyFetched = legacyFetchedLyricsPath(title, artist);
+    if (fs.existsSync(legacyFetched)) {
+      fetchedLyricsPath = legacyFetched;
+    }
+  }
+
   if (fs.existsSync(fetchedLyricsPath)) {
     try {
       const diskLyrics = await fs.promises.readFile(fetchedLyricsPath, 'utf-8');
@@ -1243,7 +1437,7 @@ async function handleSaveCustomLyrics(req, res, title, artist) {
   req.on('end', async () => {
     try {
       const { lyrics } = JSON.parse(body);
-      if (!lyrics) {
+      if (typeof lyrics !== 'string') {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: false, error: 'No lyrics provided' }));
       }
@@ -1263,6 +1457,135 @@ async function handleSaveCustomLyrics(req, res, title, artist) {
   });
 }
 
+function handleSpotifyImport(req, res, inputUrl) {
+  const m = (inputUrl || '').match(/playlist[/:]([a-zA-Z0-9]+)/);
+  if (!m) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'Invalid Spotify playlist URL' }));
+  }
+  const playlistId = m[1];
+  const embedUrl = `https://open.spotify.com/embed/playlist/${playlistId}`;
+  const options = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    },
+    timeout: 10000
+  };
+
+  const getReq = https.get(embedUrl, options, (getRes) => {
+    let body = '';
+    getRes.on('data', chunk => body += chunk);
+    getRes.on('end', () => {
+      try {
+        const nextDataMatch = body.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if (!nextDataMatch) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'No __NEXT_DATA__ found' }));
+        }
+        const data = JSON.parse(nextDataMatch[1]);
+        const entity = data?.props?.pageProps?.state?.data?.entity;
+        if (!entity) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Spotify entity not found' }));
+        }
+        const name = entity.name || 'Spotify Playlist';
+        const rawTracks = Array.isArray(entity.trackList) ? entity.trackList : [];
+        const tracks = rawTracks.slice(0, 100).map(t => ({
+          title: t.title || '',
+          artist: t.subtitle || ''
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, name, tracks }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+  });
+
+  getReq.on('error', (err) => {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: err.message }));
+  });
+  getReq.on('timeout', () => {
+    getReq.destroy();
+    res.writeHead(504, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'Spotify request timed out' }));
+  });
+}
+
+function callTranslate(text, to) {
+  return new Promise((resolve) => {
+    const clients = ['dict-chrome-ex', 'gtx'];
+    let idx = 0;
+    function tryNext() {
+      if (idx >= clients.length) return resolve(null);
+      const c = clients[idx++];
+      const u = `https://translate.googleapis.com/translate_a/single?client=${c}&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`;
+      const req = https.get(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 8000 }, (res) => {
+        let b = '';
+        res.on('data', chunk => b += chunk);
+        res.on('end', () => {
+          if (res.statusCode !== 200) return tryNext();
+          try {
+            const data = JSON.parse(b);
+            if (data && Array.isArray(data[0])) {
+              const joined = data[0].map(s => s[0]).join('').split('\n');
+              return resolve(joined);
+            }
+          } catch (e) {}
+          tryNext();
+        });
+      });
+      req.on('error', tryNext);
+      req.on('timeout', () => { req.destroy(); tryNext(); });
+    }
+    tryNext();
+  });
+}
+
+async function handleTranslate(req, res, lines, to = 'en') {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, translations: [] }));
+  }
+
+  const chunks = [];
+  let curChunk = [];
+  let curLen = 0;
+  for (const line of lines) {
+    if (curChunk.length > 0 && curLen + line.length + 1 > 1800) {
+      chunks.push(curChunk);
+      curChunk = [];
+      curLen = 0;
+    }
+    curChunk.push(line);
+    curLen += line.length + 1;
+  }
+  if (curChunk.length > 0) chunks.push(curChunk);
+
+  const allTranslations = [];
+  for (const chunk of chunks) {
+    const joined = chunk.join('\n');
+    let chunkTrans = await callTranslate(joined, to);
+    if (!chunkTrans || chunkTrans.length !== chunk.length) {
+      chunkTrans = [];
+      for (const line of chunk) {
+        if (!line.trim()) {
+          chunkTrans.push('');
+          continue;
+        }
+        const single = await callTranslate(line, to);
+        chunkTrans.push((single && single[0]) ? single[0] : line);
+      }
+    }
+    allTranslations.push(...chunkTrans);
+  }
+
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ success: true, translations: allTranslations }));
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
@@ -1274,6 +1597,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   const parsedUrl = url.parse(req.url, true);
+
+  if (parsedUrl.pathname === '/api/translate' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      const payload = safeJsonParse(body, {});
+      const texts = payload.texts || payload.lines || [];
+      const targetLang = payload.targetLang || payload.to || 'en';
+      handleTranslate(req, res, texts, targetLang);
+    });
+    return;
+  }
 
   if (parsedUrl.pathname === '/api/state' && req.method === 'POST') {
     let body = '';
@@ -1312,6 +1647,11 @@ const server = http.createServer(async (req, res) => {
     const format = parsedUrl.query.format || 'mp3';
     const quality = parsedUrl.query.quality || '0';
     return handleDownload(req, res, trackUrl, title, artist, format, quality);
+  }
+
+  if (parsedUrl.pathname === '/api/spotify-import') {
+    const spotifyUrl = parsedUrl.query.url || '';
+    return handleSpotifyImport(req, res, spotifyUrl);
   }
 
   if (parsedUrl.pathname === '/api/search') {
@@ -1387,6 +1727,123 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/local-track') {
     const trackId = parsedUrl.query.id || '';
     return handleLocalTrack(req, res, trackId);
+  }
+
+  if (parsedUrl.pathname === '/api/library-add' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        const fileRegex = /^local_[a-f0-9]{12}\.[a-z0-9]+$/;
+        let addedCount = 0;
+        for (const item of items) {
+          if (!item || !item.id || !item.file) continue;
+          if (!fileRegex.test(item.file)) continue;
+          const fullPath = path.join(LIBRARY_DIR, item.file);
+          if (!fs.existsSync(fullPath)) continue;
+
+          let rawName = (item.name || '').trim();
+          let cleanName = rawName.replace(/^\d+(?:[.\s-]+)\s*/, '').trim() || rawName || 'Untitled';
+
+          const dashIdx = cleanName.indexOf(' - ');
+          let artist = 'Unknown artist';
+          let title = cleanName;
+          if (dashIdx !== -1) {
+            artist = cleanName.slice(0, dashIdx).trim() || 'Unknown artist';
+            title = cleanName.slice(dashIdx + 3).trim() || cleanName;
+          }
+
+          libraryIndex[item.id] = {
+            id: item.id,
+            file: item.file,
+            ext: item.ext || path.extname(item.file).slice(1).toLowerCase(),
+            title: title,
+            artist: artist,
+            duration: 0,
+            addedAt: Date.now()
+          };
+          addedCount++;
+        }
+        saveLibraryIndex();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, count: addedCount }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/library-update' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const { id, duration } = payload;
+        if (id && libraryIndex[id] && typeof duration === 'number' && !isNaN(duration)) {
+          libraryIndex[id].duration = duration;
+          saveLibraryIndex();
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/library') {
+    const list = Object.values(libraryIndex)
+      .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+      .map(item => ({
+        id: item.id,
+        platform: 'local',
+        title: item.title,
+        artist: item.artist,
+        duration: Number(item.duration) || 0,
+        thumbnail: ''
+      }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(list));
+  }
+
+  if (parsedUrl.pathname === '/api/library-file') {
+    const trackId = parsedUrl.query.id || '';
+    return handleLibraryFile(req, res, trackId);
+  }
+
+  if (parsedUrl.pathname === '/api/library-remove' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const id = payload.id || parsedUrl.query.id || '';
+        if (id && libraryIndex[id]) {
+          const item = libraryIndex[id];
+          if (item.file) {
+            const fullPath = path.join(LIBRARY_DIR, item.file);
+            try {
+              if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+            } catch (e) {}
+          }
+          delete libraryIndex[id];
+          saveLibraryIndex();
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
   }
 
   if (parsedUrl.pathname === '/api/local-thumbnail') {

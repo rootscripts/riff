@@ -13,6 +13,8 @@ const CUSTOM_LYRICS_DIR = path.join(DATA_DIR, 'custom-lyrics');
 const LYRICS_DIR = path.join(DATA_DIR, 'lyrics');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 const METADATA_PATH = path.join(DATA_DIR, 'metadata.json');
+const LIBRARY_DIR = path.join(DATA_DIR, 'library');
+const LIBRARY_PATH = path.join(DATA_DIR, 'library.json');
 const BIN_DIR = path.join(DATA_DIR, 'bin');
 
 function isExecutableFile(p) {
@@ -75,5 +77,6 @@ function clearBinaryCache() {
 module.exports = {
   clearBinaryCache,
   IS_WIN, DATA_DIR, BIN_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH,
+  LIBRARY_DIR, LIBRARY_PATH,
   findInPath, resolveBinary, ytDlpCommand
 };

@@ -16,12 +16,15 @@ function writeIgnored(file, version) {
 function initUpdater(getWindow) {
   const ignoreFile = path.join(app.getPath('userData'), 'ignored-update.json');
   const pkg = require('./package.json');
+  if (pkg.version) {
+    app.setVersion(pkg.version);
+  }
   const releasesUrl = `${pkg.homepage || 'https://github.com/rootscripts/riff'}/releases`;
   let manualCheck = false;
   let installNow = false;
   let current = null;
 
-  ipcMain.handle('get-app-version', () => pkg.version || app.getVersion());
+  ipcMain.handle('get-app-version', () => app.getVersion());
 
   const isDev = !app.isPackaged;
   const devConfigFile = path.join(__dirname, 'dev-app-update.yml');
@@ -35,7 +38,6 @@ function initUpdater(getWindow) {
   const { autoUpdater } = require('electron-updater');
   if (isDev) {
     autoUpdater.forceDevUpdateConfig = true;
-    autoUpdater.currentVersion = pkg.version || '1.0.0';
   }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;

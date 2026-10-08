@@ -1,11 +1,15 @@
-const { app, BrowserWindow, ipcMain, screen, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
+const { LIBRARY_DIR } = require('./platform');
 
+const enabledFeatures = [];
 if (process.platform === 'linux') {
+  enabledFeatures.push('WaylandWindowDecorations', 'UseOzonePlatform', 'WaylandFractionalScaleV1', 'MediaSessionService', 'HardwareMediaKeyHandling');
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-  app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations,UseOzonePlatform,WaylandFractionalScaleV1');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -18,9 +22,14 @@ if (process.platform === 'linux') {
 }
 
 if (process.platform === 'win32') {
+  enabledFeatures.push('HardwareMediaKeyHandling');
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
   app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+}
+
+if (enabledFeatures.length > 0) {
+  app.commandLine.appendSwitch('enable-features', enabledFeatures.join(','));
 }
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -60,7 +69,21 @@ function runGUI() {
   const discordRPC = require('./discord-rpc');
 
   let mainWindow = null;
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) { app.quit(); return; }
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
   let serverPort = PORT;
+  let tray = null;
+  let isQuitting = false;
+  let trayOnClose = process.platform !== 'linux';
+  let isMiniWindow = false;
+  let preMiniBounds = null;
 
   const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
 
@@ -127,6 +150,7 @@ function runGUI() {
   }
 
   function persistWindowState() {
+    if (isMiniWindow) return;
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const isMaximized = mainWindow.isMaximized();
     const isFullScreen = mainWindow.isFullScreen();
@@ -220,7 +244,13 @@ function runGUI() {
     mainWindow.on('unmaximize', persistWindowState);
     mainWindow.on('enter-full-screen', persistWindowState);
     mainWindow.on('leave-full-screen', persistWindowState);
-    mainWindow.on('close', persistWindowState);
+    mainWindow.on('close', (e) => {
+      persistWindowState();
+      if (trayOnClose && tray && !isQuitting) {
+        e.preventDefault();
+        mainWindow.hide();
+      }
+    });
 
     discordRPC.initRPC();
   }
@@ -228,6 +258,8 @@ function runGUI() {
   ipcMain.removeHandler('get-server-port');
   ipcMain.removeHandler('discord-rpc-get-enabled');
   ipcMain.removeHandler('discord-rpc-get-connected');
+  ipcMain.removeHandler('pick-media');
+  ipcMain.removeHandler('import-audio-files');
 
   ipcMain.on('window-minimize', () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
@@ -245,6 +277,7 @@ function runGUI() {
     });
 
       ipcMain.handle('get-server-port', () => serverPort);
+      ipcMain.handle('get-gpu-compositing', () => { try { return String(app.getGPUFeatureStatus().gpu_compositing || ''); } catch (e) { return ''; } });
 
       ipcMain.on('discord-rpc-update', (event, trackInfo) => {
         discordRPC.updatePresence(trackInfo);
@@ -312,7 +345,135 @@ function runGUI() {
         return true;
       });
 
+      ipcMain.handle('pick-media', async () => {
+        const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'Media', extensions: ['png','jpg','jpeg','webp','gif','mp4','webm'] }] });
+        return r.canceled ? null : pathToFileURL(r.filePaths[0]).href;
+      });
+
+      ipcMain.handle('import-audio-files', async () => {
+        const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Audio', extensions: ['mp3','wav','flac','opus','ogg','oga','m4a','aac','webm','weba'] }] });
+        if (r.canceled) return [];
+        fs.mkdirSync(LIBRARY_DIR, { recursive: true });
+        const out = [];
+        for (const src of r.filePaths) {
+          const st = fs.statSync(src), ext = path.extname(src).slice(1).toLowerCase();
+          const id = 'local_' + crypto.createHash('sha1').update(path.basename(src) + st.size).digest('hex').slice(0, 12);
+          const file = `${id}.${ext}`;
+          if (!fs.existsSync(path.join(LIBRARY_DIR, file))) await fs.promises.copyFile(src, path.join(LIBRARY_DIR, file));
+          out.push({ id, file, ext, name: path.basename(src, path.extname(src)) });
+        }
+        return out;
+      });
+
+      ipcMain.on('set-tray-on-close', (e, v) => {
+        trayOnClose = !!v;
+      });
+
+      const MEDIA_KEYS = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev', MediaStop: 'stop' };
+      let mediaKeysWanted = true;
+      let mediaKeysActive = false;
+      const sendMedia = (cmd) => {
+        if (process.env.RIFF_DEBUG === '1') console.log('[media] globalShortcut', cmd);
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('media-command', cmd);
+      };
+      function unregisterMediaKeys() {
+        for (const k of Object.keys(MEDIA_KEYS)) {
+          try { globalShortcut.unregister(k); } catch (e) {}
+        }
+      }
+      function registerMediaKeys() {
+        if (process.platform !== 'win32') return;
+        unregisterMediaKeys();
+        if (!mediaKeysWanted || !mediaKeysActive) return;
+        for (const [k, cmd] of Object.entries(MEDIA_KEYS)) {
+          try {
+            if (!globalShortcut.register(k, () => sendMedia(cmd))) {
+              console.warn('[media] could not register', k);
+            }
+          } catch (e) {}
+        }
+      }
+      ipcMain.on('set-media-keys', (e, enabled) => { mediaKeysWanted = !!enabled; registerMediaKeys(); });
+      ipcMain.on('media-keys-active', () => { if (!mediaKeysActive) { mediaKeysActive = true; registerMediaKeys(); } });
+      powerMonitor.on('resume', registerMediaKeys);
+      powerMonitor.on('unlock-screen', registerMediaKeys);
+      app.on('will-quit', () => globalShortcut.unregisterAll());
+
+      ipcMain.removeHandler('toggle-mini-window');
+      ipcMain.handle('toggle-mini-window', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        if (!isMiniWindow) {
+          isMiniWindow = true;
+          preMiniBounds = mainWindow.isMaximized() ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+          if (mainWindow.isMaximized()) mainWindow.unmaximize();
+          mainWindow.setMinimumSize(320, 120);
+          mainWindow.setSize(380, 160);
+          mainWindow.setAlwaysOnTop(true);
+          return true;
+        } else {
+          isMiniWindow = false;
+          mainWindow.setAlwaysOnTop(false);
+          mainWindow.setMinimumSize(360, 500);
+          if (preMiniBounds) {
+            mainWindow.setBounds(clampBoundsToDisplay(preMiniBounds));
+          } else {
+            mainWindow.setSize(1000, 700);
+          }
+          return false;
+        }
+      });
+
+      function setupTray() {
+        try {
+          const iconPath = path.join(__dirname, 'assets', 'icon.png');
+          let trayIcon = nativeImage.createFromPath(iconPath);
+          trayIcon = trayIcon.resize({ width: 22, height: 22 });
+          tray = new Tray(trayIcon);
+          tray.setToolTip('Riff');
+          const contextMenu = Menu.buildFromTemplate([
+            {
+              label: 'Show/Hide',
+              click: () => {
+                if (!mainWindow || mainWindow.isDestroyed()) return;
+                if (mainWindow.isVisible()) mainWindow.hide();
+                else { mainWindow.show(); mainWindow.focus(); }
+              }
+            },
+            {
+              label: 'Play/Pause',
+              click: () => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('media-command', 'toggle');
+                }
+              }
+            },
+            { type: 'separator' },
+            {
+              label: 'Quit',
+              click: () => {
+                isQuitting = true;
+                app.quit();
+              }
+            }
+          ]);
+          tray.setContextMenu(contextMenu);
+          tray.on('click', () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            if (mainWindow.isVisible()) mainWindow.hide();
+            else { mainWindow.show(); mainWindow.focus(); }
+          });
+        } catch (err) {
+          console.warn('Tray creation failed:', err);
+          tray = null;
+        }
+      }
+
+      app.on('before-quit', () => {
+        isQuitting = true;
+      });
+
       app.whenReady().then(() => {
+        setupTray();
         createWindow();
         require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {

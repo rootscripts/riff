@@ -26,6 +26,10 @@
       this.hqSaturation = null;
       this.hqLimiter = null;
 
+      this.eqLow = null;
+      this.eqMid = null;
+      this.eqHigh = null;
+
       this.masterGain = null;
       this.analyserNode = null;
 
@@ -44,7 +48,8 @@
         reverb: 0,
         distortion: 0,
         volume: 1.0,
-        echo: 0
+        echo: 0,
+        eq: { low: 0, mid: 0, high: 0 }
       };
       this.isMuted = false;
       this.volume = 0.85;
@@ -162,26 +167,41 @@
           this.analyserNode.fftSize = 128;
           this.analyserNode.smoothingTimeConstant = 0.8;
 
+          this.eqLow = this.ctx.createBiquadFilter();
+          this.eqLow.type = 'lowshelf';
+          this.eqLow.frequency.value = 200;
+          this.eqMid = this.ctx.createBiquadFilter();
+          this.eqMid.type = 'peaking';
+          this.eqMid.frequency.value = 1000;
+          this.eqMid.Q.value = 0.9;
+          this.eqHigh = this.ctx.createBiquadFilter();
+          this.eqHigh.type = 'highshelf';
+          this.eqHigh.frequency.value = 4000;
+          this.eqLow.connect(this.eqMid);
+          this.eqMid.connect(this.eqHigh);
+
           this.hqInput.connect(this.hqCompressor);
           this.hqCompressor.connect(this.hqBass);
           this.hqBass.connect(this.hqVocal);
           this.hqVocal.connect(this.hqAir);
           this.hqAir.connect(this.hqSaturation);
           this.hqSaturation.connect(this.hqLimiter);
-          this.hqLimiter.connect(this.masterGain);
+          this.hqLimiter.connect(this.eqLow);
 
-          this.stdInput.connect(this.dryGain);
+          this.stdInput.connect(this.eqLow);
+
+          this.eqHigh.connect(this.dryGain);
           this.dryGain.connect(this.masterGain);
 
-          this.stdInput.connect(this.distortionNode);
+          this.eqHigh.connect(this.distortionNode);
           this.distortionNode.connect(this.distortionGain);
           this.distortionGain.connect(this.masterGain);
 
-          this.stdInput.connect(this.delayNode);
+          this.eqHigh.connect(this.delayNode);
           this.delayNode.connect(this.delayGain);
           this.delayGain.connect(this.masterGain);
 
-          this.stdInput.connect(this.convolverNode);
+          this.eqHigh.connect(this.convolverNode);
           this.convolverNode.connect(this.reverbGain);
           this.reverbGain.connect(this.masterGain);
 
@@ -213,7 +233,10 @@
 
     setHqEnabled(enabled) {
       this.hqEnabled = enabled;
-      if (this.graphInitialized) this._updateRouting();
+      if (this.graphInitialized) {
+        this._updateRouting();
+        this._applyHqParams();
+      }
     }
 
     setHqSettings(settings) {
@@ -223,6 +246,16 @@
 
     _applyHqParams() {
       if (!this.hqCompressor) return;
+
+      if (!this.hqEnabled) {
+        const ctx = this.ctx;
+        if (ctx) {
+          if (this.hqBass) this.hqBass.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+          if (this.hqVocal) this.hqVocal.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+          if (this.hqAir) this.hqAir.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+        }
+        return;
+      }
 
       let baseBass = 0, baseVocal = 0, baseAir = 0;
       let satAmount = 0;
@@ -263,6 +296,18 @@
       this.applySettings();
     }
 
+    setEq(eq) {
+      if (!eq) return;
+      if (!this.audioSettings.eq) this.audioSettings.eq = { low: 0, mid: 0, high: 0 };
+      const clamp = v => Math.max(-12, Math.min(12, typeof v === 'number' ? v : 0));
+      if (eq.low !== undefined) this.audioSettings.eq.low = clamp(eq.low);
+      if (eq.mid !== undefined) this.audioSettings.eq.mid = clamp(eq.mid);
+      if (eq.high !== undefined) this.audioSettings.eq.high = clamp(eq.high);
+      if (this.eqLow) this.eqLow.gain.value = this.audioSettings.eq.low;
+      if (this.eqMid) this.eqMid.gain.value = this.audioSettings.eq.mid;
+      if (this.eqHigh) this.eqHigh.gain.value = this.audioSettings.eq.high;
+    }
+
     setVolume(volume, isMuted) {
       this.volume = volume;
       this.isMuted = isMuted;
@@ -286,6 +331,8 @@
           audioElement.playbackRate = s.speed;
         }
       }
+
+      if (s.eq) this.setEq(s.eq);
 
       if (this.reverbGain) this.reverbGain.gain.value = s.reverb / 100;
 
@@ -314,8 +361,9 @@
 
     isModified() {
       const s = this.audioSettings;
+      const eqMod = s.eq ? (s.eq.low !== 0 || s.eq.mid !== 0 || s.eq.high !== 0) : false;
       return s.speed !== 1.0 || s.speedPitch !== 1.0 || s.pitch !== 0 ||
-        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0;
+        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || eqMod;
     }
 
 
@@ -380,6 +428,11 @@
       src.buffer = sourceBuffer;
       src.playbackRate.value = speedFactor;
 
+      const eqL = offline.createBiquadFilter(); eqL.type = 'lowshelf'; eqL.frequency.value = 200; eqL.gain.value = Math.max(-12, Math.min(12, s.eq?.low || 0));
+      const eqM = offline.createBiquadFilter(); eqM.type = 'peaking'; eqM.frequency.value = 1000; eqM.Q.value = 0.9; eqM.gain.value = Math.max(-12, Math.min(12, s.eq?.mid || 0));
+      const eqH = offline.createBiquadFilter(); eqH.type = 'highshelf'; eqH.frequency.value = 4000; eqH.gain.value = Math.max(-12, Math.min(12, s.eq?.high || 0));
+      eqL.connect(eqM); eqM.connect(eqH);
+
       if (useHq) {
         const comp = offline.createDynamicsCompressor();
         comp.threshold.value = -12;
@@ -427,7 +480,8 @@
         vocal.connect(air);
         air.connect(sat);
         sat.connect(limiter);
-        limiter.connect(master);
+        limiter.connect(eqL);
+        eqH.connect(master);
         master.connect(offline.destination);
 
       } else {
@@ -460,21 +514,23 @@
 
         master.gain.value = s.volume;
 
+        src.connect(eqL);
+
         delay.connect(feedback);
         feedback.connect(delay);
 
-        src.connect(dry);
+        eqH.connect(dry);
         dry.connect(master);
 
-        src.connect(distNode);
+        eqH.connect(distNode);
         distNode.connect(distGain);
         distGain.connect(master);
 
-        src.connect(delay);
+        eqH.connect(delay);
         delay.connect(echoGain);
         echoGain.connect(master);
 
-        src.connect(conv);
+        eqH.connect(conv);
         conv.connect(revGain);
         revGain.connect(master);
 
