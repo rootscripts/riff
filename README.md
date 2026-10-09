@@ -4,7 +4,7 @@
 
 # Riff
 
-Riff is a desktop music player for Windows and Linux. It is made for playing music, managing a music library, and downloading tracks for offline listening.
+Riff is a free forever, best and freshly updating desktop music player for Windows and Linux. It is made for playing music, managing a music library, and downloading tracks for offline listening.
 
 The interface uses Material Design 3 (You), but the player is kept fairly simple and focused on the music itself.
 
