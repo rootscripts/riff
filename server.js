@@ -2638,6 +2638,10 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/lyrics',
   '/api/download',
   '/api/spotify-import',
+  '/api/spotify-auth-start',
+  '/api/spotify-status',
+  '/api/spotify-library',
+  '/api/spotify-logout',
   '/api/prefetch',
   '/api/check-cache',
   '/api/stream-info',
@@ -2862,8 +2866,9 @@ async function trySpotifyWebApi(playlistId) {
       const d = JSON.parse(resp.body);
       const name = d.name || 'Spotify Playlist';
       const cover = (d.images && Array.isArray(d.images) && d.images[0] && d.images[0].url) ? d.images[0].url : '';
-      let items = (d.tracks && Array.isArray(d.tracks.items)) ? d.tracks.items.slice() : [];
-      let nextUrl = d.tracks?.next;
+      const playlistItems = d.items || d.tracks;
+      let items = Array.isArray(playlistItems?.items) ? playlistItems.items.slice() : [];
+      let nextUrl = playlistItems?.next;
       let guard = 0;
       while (nextUrl && guard++ < 100) {
         const nextResp = await spotifyGetWithRetry(nextUrl, spotifyAuth.token);
@@ -2880,14 +2885,14 @@ async function trySpotifyWebApi(playlistId) {
         }
       }
       const tracks = items.map(it => {
-        const t = it.track || it;
+        const t = it.item || it.track || it;
         return {
           title: t.name || '',
           artist: Array.isArray(t.artists) ? t.artists.map(a => a.name).join(', ') : '',
           duration: t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined
         };
       }).filter(t => t.title);
-      return { success: true, name, cover, tracks, total: d.tracks?.total || tracks.length };
+      return { success: true, name, cover, tracks, total: playlistItems?.total || tracks.length };
     }
   } catch (e) {}
   return null;
@@ -2923,7 +2928,7 @@ function fetchSpotifyEmbed(playlistId, ua) {
 }
 
 async function handleSpotifyImport(req, res, inputUrl) {
-  const m = (inputUrl || '').match(/playlist[/:]([a-zA-Z0-9]+)/);
+  const m = (inputUrl || '').match(/^(?:(?:https:\/\/)?open\.spotify\.com\/(?:embed\/)?playlist\/|spotify:playlist:)([a-zA-Z0-9]{22})(?:[/?#]|$)/);
   if (!m) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, code: 'spotify_error', error: 'Invalid Spotify playlist URL' }));
@@ -2940,6 +2945,11 @@ async function handleSpotifyImport(req, res, inputUrl) {
       embedRes = await fetchSpotifyEmbed(playlistId, retryUa);
     }
   } catch (err) {
+    const apiFallback = await trySpotifyWebApi(playlistId);
+    if (apiFallback && apiFallback.tracks.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ...apiFallback, hasMore: apiFallback.total > apiFallback.tracks.length }));
+    }
     res.writeHead(500, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, code: 'spotify_error', error: 'Network error connecting to Spotify' }));
   }
@@ -2949,6 +2959,11 @@ async function handleSpotifyImport(req, res, inputUrl) {
     return res.end(JSON.stringify({ success: false, code: 'spotify_not_found', error: 'Playlist not found' }));
   }
   if (embedRes.status === 403) {
+    const apiFallback = await trySpotifyWebApi(playlistId);
+    if (apiFallback && apiFallback.tracks.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ...apiFallback, hasMore: apiFallback.total > apiFallback.tracks.length }));
+    }
     res.writeHead(403, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, code: 'spotify_forbidden', error: 'Spotify refused request (403)' }));
   }
@@ -2957,6 +2972,11 @@ async function handleSpotifyImport(req, res, inputUrl) {
     return res.end(JSON.stringify({ success: false, code: 'spotify_rate_limited', error: 'Spotify rate limited (429)' }));
   }
   if (embedRes.status !== 200) {
+    const apiFallback = await trySpotifyWebApi(playlistId);
+    if (apiFallback && apiFallback.tracks.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ...apiFallback, hasMore: apiFallback.total > apiFallback.tracks.length }));
+    }
     res.writeHead(embedRes.status || 500, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, code: 'spotify_error', error: `Spotify returned status ${embedRes.status}` }));
   }
@@ -3440,6 +3460,7 @@ async function handlePlaylistImport(req, res, inputUrl) {
 
 const SPOTIFY_SCOPES = 'user-library-read playlist-read-private playlist-read-collaborative';
 let spotifyAuth = { verifier: '', state: '', clientId: '', token: '' };
+let spotifyAuthError = '';
 
 function getSpotifyRedirectUri() {
   const a = server.address();
@@ -3514,6 +3535,15 @@ async function spotifyGetWithRetry(requestUrl, token) {
   return resp;
 }
 
+function spotifyApiFailure(resp, endpoint) {
+  let detail = '';
+  try {
+    const error = JSON.parse(resp.body).error;
+    detail = typeof error === 'string' ? error : (error?.message || '');
+  } catch (e) {}
+  return new Error(`Spotify ${endpoint} returned HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
+}
+
 async function handleSpotifyLibrary(req, res, query) {
   if (!spotifyAuth.token) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -3525,14 +3555,14 @@ async function handleSpotifyLibrary(req, res, query) {
 
   let likes = [];
   let playlists = [];
+  const skippedPlaylists = [];
 
   try {
     if (wantLikes) {
       let nextUrl = 'https://api.spotify.com/v1/me/tracks?limit=50';
       while (nextUrl && likes.length < 5000) {
         const resp = await spotifyGetWithRetry(nextUrl, spotifyAuth.token);
-        if (resp.status === 403) throw new Error('SPOTIFY_403');
-        if (resp.status < 200 || resp.status >= 300) break;
+        if (resp.status < 200 || resp.status >= 300) throw spotifyApiFailure(resp, 'saved tracks');
         let data = {};
         try { data = JSON.parse(resp.body); } catch (e) { break; }
         const items = Array.isArray(data.items) ? data.items : [];
@@ -3554,8 +3584,7 @@ async function handleSpotifyLibrary(req, res, query) {
       let plNext = 'https://api.spotify.com/v1/me/playlists?limit=50';
       while (plNext) {
         const resp = await spotifyGetWithRetry(plNext, spotifyAuth.token);
-        if (resp.status === 403) throw new Error('SPOTIFY_403');
-        if (resp.status < 200 || resp.status >= 300) break;
+        if (resp.status < 200 || resp.status >= 300) throw spotifyApiFailure(resp, 'playlists');
         let data = {};
         try { data = JSON.parse(resp.body); } catch (e) { break; }
         const items = Array.isArray(data.items) ? data.items : [];
@@ -3568,21 +3597,46 @@ async function handleSpotifyLibrary(req, res, query) {
       }
 
       for (const pl of userPlaylists) {
-        let plTracks = [];
+        const plTracks = [];
+        let skipped = false;
         let itemUrl = `https://api.spotify.com/v1/playlists/${encodeURIComponent(pl.id)}/items?limit=50`;
         let resp = await spotifyGetWithRetry(itemUrl, spotifyAuth.token);
-        if (resp.status === 403) throw new Error('SPOTIFY_403');
         if (resp.status === 404 || resp.status === 400) {
           itemUrl = `https://api.spotify.com/v1/playlists/${encodeURIComponent(pl.id)}/tracks?limit=50`;
           resp = await spotifyGetWithRetry(itemUrl, spotifyAuth.token);
-          if (resp.status === 403) throw new Error('SPOTIFY_403');
         }
 
-        if (resp.status >= 200 && resp.status < 300) {
-          let pageData = {};
-          try { pageData = JSON.parse(resp.body); } catch (e) {}
-          const pageItems = Array.isArray(pageData.items) ? pageData.items : [];
-          for (const it of pageItems) {
+        // Dev Mode may deny items of playlists the current user does not own or collaborate on.
+        if (resp.status === 403) {
+          skippedPlaylists.push(pl.name);
+          continue;
+        }
+        if (resp.status < 200 || resp.status >= 300) throw spotifyApiFailure(resp, `playlist items (${pl.name})`);
+
+        let pageData = {};
+        try { pageData = JSON.parse(resp.body); } catch (e) {}
+        const pageItems = Array.isArray(pageData.items) ? pageData.items : [];
+        for (const it of pageItems) {
+          const t = it?.item || it?.track;
+          if (!t || t.is_local || t.type === 'episode') continue;
+          const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
+          const title = t.name || '';
+          const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
+          if (title) plTracks.push({ title, artist, duration });
+        }
+        let trackNext = pageData.next || null;
+        while (trackNext) {
+          const nextResp = await spotifyGetWithRetry(trackNext, spotifyAuth.token);
+          if (nextResp.status === 403) {
+            skippedPlaylists.push(pl.name);
+            skipped = true;
+            break;
+          }
+          if (nextResp.status < 200 || nextResp.status >= 300) throw spotifyApiFailure(nextResp, `playlist items (${pl.name})`);
+          let nextData = {};
+          try { nextData = JSON.parse(nextResp.body); } catch (e) { break; }
+          const nextItems = Array.isArray(nextData.items) ? nextData.items : [];
+          for (const it of nextItems) {
             const t = it?.item || it?.track;
             if (!t || t.is_local || t.type === 'episode') continue;
             const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
@@ -3590,40 +3644,16 @@ async function handleSpotifyLibrary(req, res, query) {
             const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
             if (title) plTracks.push({ title, artist, duration });
           }
-          let trackNext = pageData.next || null;
-          while (trackNext) {
-            const nextResp = await spotifyGetWithRetry(trackNext, spotifyAuth.token);
-            if (nextResp.status === 403) throw new Error('SPOTIFY_403');
-            if (nextResp.status < 200 || nextResp.status >= 300) break;
-            let nextData = {};
-            try { nextData = JSON.parse(nextResp.body); } catch (e) { break; }
-            const nextItems = Array.isArray(nextData.items) ? nextData.items : [];
-            for (const it of nextItems) {
-              const t = it?.item || it?.track;
-              if (!t || t.is_local || t.type === 'episode') continue;
-              const artist = (Array.isArray(t.artists) && t.artists[0]?.name) || '';
-              const title = t.name || '';
-              const duration = t.duration_ms ? Math.round(t.duration_ms / 1000) : undefined;
-              if (title) plTracks.push({ title, artist, duration });
-            }
-            trackNext = nextData.next || null;
-          }
+          trackNext = nextData.next || null;
         }
-        playlists.push({ name: pl.name, tracks: plTracks });
+        if (!skipped) playlists.push({ name: pl.name, tracks: plTracks });
       }
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, likes, playlists }));
+    res.end(JSON.stringify({ success: true, likes, playlists, skippedPlaylists }));
   } catch (err) {
-    if (err.message === 'SPOTIFY_403') {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({
-        success: false,
-        error: 'Spotify refused access. In Development Mode your account must be added under "User Management" of your app.'
-      }));
-    }
-    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.writeHead(/returned HTTP 403/.test(err.message) ? 403 : 500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, error: err.message }));
   }
 }
@@ -4134,6 +4164,7 @@ const server = http.createServer(async (req, res) => {
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
     const state = crypto.randomBytes(16).toString('hex');
     spotifyAuth = { verifier, state, clientId, token: '' };
+    spotifyAuthError = '';
     const redirectUri = getSpotifyRedirectUri();
     const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&scope=${encodeURIComponent(SPOTIFY_SCOPES)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}&code_challenge_method=S256&code_challenge=${encodeURIComponent(challenge)}`;
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4144,34 +4175,46 @@ const server = http.createServer(async (req, res) => {
     const code = parsedUrl.query.code;
     const state = parsedUrl.query.state;
     const errParam = parsedUrl.query.error;
-    if (errParam || !state || state !== spotifyAuth.state || !code) {
+    if (!spotifyAuth.state || !state || state !== spotifyAuth.state) {
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<!DOCTYPE html><html><body><p>Login failed, you can close this tab.</p></body></html>');
+      return res.end('<!DOCTYPE html><html><body><p>Invalid Spotify login session.</p></body></html>');
+    }
+    if (errParam || !code) {
+      spotifyAuthError = errParam === 'access_denied' ? 'Spotify authorization was denied.' : 'Spotify login failed. Check the Client ID, allowed account and redirect URI.';
+      spotifyAuth.state = '';
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
     }
     const redirectUri = getSpotifyRedirectUri();
     try {
       const tokenResult = await exchangeSpotifyCode(code, spotifyAuth.verifier, spotifyAuth.clientId, redirectUri);
+      spotifyAuth.state = '';
       if (tokenResult.status >= 200 && tokenResult.status < 300 && tokenResult.data && tokenResult.data.access_token) {
         spotifyAuth.token = tokenResult.data.access_token;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end('<!DOCTYPE html><html><body><p>Riff is connected to Spotify. You can close this tab.</p></body></html>');
       } else {
+        const reason = tokenResult.data?.error_description || tokenResult.data?.error || `HTTP ${tokenResult.status}`;
+        spotifyAuthError = `Spotify token exchange failed: ${reason}`;
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end('<!DOCTYPE html><html><body><p>Login failed, you can close this tab.</p></body></html>');
+        return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
       }
     } catch (err) {
+      spotifyAuth.state = '';
+      spotifyAuthError = `Could not reach Spotify: ${err.message}`;
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<!DOCTYPE html><html><body><p>Login failed, you can close this tab.</p></body></html>');
+      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
     }
   }
 
   if (parsedUrl.pathname === '/api/spotify-status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ connected: Boolean(spotifyAuth.token) }));
+    return res.end(JSON.stringify({ connected: Boolean(spotifyAuth.token), error: spotifyAuthError }));
   }
 
   if (parsedUrl.pathname === '/api/spotify-logout') {
     spotifyAuth.token = '';
+    spotifyAuthError = '';
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }

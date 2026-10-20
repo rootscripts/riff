@@ -11142,8 +11142,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           spLoginStatus.textContent = 'Connected';
           spLoginStatus.style.color = 'var(--md-sys-color-primary, #6750A4)';
         } else {
-          spLoginStatus.textContent = 'Not connected';
-          spLoginStatus.style.color = 'var(--md-sys-color-outline)';
+          spLoginStatus.textContent = data.error || 'Not connected';
+          spLoginStatus.style.color = data.error ? 'var(--md-sys-color-error, #ba1a1a)' : 'var(--md-sys-color-outline)';
         }
       }
       if (currentSpotifyImportMode === 'login' && btnConfirmSpotifyImport && btnConfirmSpotifyImport.dataset.action !== 'done') {
@@ -11175,7 +11175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (body && typeof body === 'object') {
       if (body.code === 'spotify_forbidden' || (provider === 'spotify' && status === 403)) {
-        return { code: 'spotify_forbidden', title: 'Spotify refused the request from your network (403). Try again later, use a VPN, or use the Export files tab.', hint: '', icon: restrictedIcon };
+        return { code: 'spotify_forbidden', title: 'Spotify refused this playlist request (403)', hint: 'Try connecting an authorized account or use Export files', icon: restrictedIcon };
       }
       if (body.code === 'spotify_rate_limited' || (provider === 'spotify' && status === 429)) {
         return { code: 'spotify_rate_limited', title: 'Spotify is rate limiting requests. Wait a minute and try again.', hint: '', icon: clockIcon };
@@ -11332,11 +11332,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           try {
             const sRes = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-status`);
             const sData = await sRes.json();
-            if (sRes.status === 403 || sData.status === 403 || (sData.error && /403|forbidden|access_denied/i.test(String(sData.error)))) {
+            if (sData.error) {
               clearInterval(spLoginPollTimer);
               spLoginPollTimer = null;
               if (spLoginStatus) {
-                spLoginStatus.textContent = 'Spotify only allows approved accounts to log in to this app right now. Use the Playlist link or Export files tab instead.';
+                spLoginStatus.textContent = sData.error;
                 spLoginStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
               }
               return;
@@ -11675,10 +11675,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!data.success) {
         if (spotifyStatus) {
-          const is403 = res.status === 403 || String(data.error || '').includes('403') || /forbidden|access_denied/i.test(String(data.error || ''));
-          spotifyStatus.textContent = is403
-            ? 'Spotify only allows approved accounts to log in to this app right now. Use the Playlist link or Export files tab instead.'
-            : (data.error || 'Failed to fetch Spotify library');
+          spotifyStatus.textContent = data.error || 'Failed to fetch Spotify library';
           spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
           spotifyStatus.classList.remove('hidden');
         }
@@ -11687,25 +11684,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
+      if (!(data.likes?.length || data.playlists?.some(pl => pl.tracks?.length))) {
+        if (spotifyStatus) {
+          spotifyStatus.textContent = data.skippedPlaylists?.length
+            ? `${data.skippedPlaylists.length} playlist(s) skipped: Spotify denied access to their tracks. In Development Mode only playlists you own or collaborate on are available. Try a playlist link or Export files.`
+            : 'No tracks found in your Spotify library';
+          spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
+          spotifyStatus.classList.remove('hidden');
+        }
+        if (btnConfirmSpotifyImport) btnConfirmSpotifyImport.disabled = false;
+        if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = false;
+        return;
+      }
       await runSpotifyImport({ likes: data.likes || [], playlists: data.playlists || [] });
+      if (data.skippedPlaylists?.length && spotifyStatus && btnConfirmSpotifyImport?.dataset.action === 'done') {
+        spotifyStatus.textContent += ` · ${data.skippedPlaylists.length} playlist(s) skipped: Spotify denied track access (in Development Mode, only owned or collaborative playlists are available).`;
+        spotifyStatus.classList.remove('hidden');
+      }
     } catch (err) {
       if (spotifyStatus) {
-        const is403 = /403|forbidden|access_denied/i.test(String(err && err.message));
-        spotifyStatus.textContent = is403
-          ? 'Spotify only allows approved accounts to log in to this app right now. Use the Playlist link or Export files tab instead.'
-          : (err.message || 'Failed to fetch Spotify library');
+        spotifyStatus.textContent = err.message || 'Failed to fetch Spotify library';
         spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
         spotifyStatus.classList.remove('hidden');
       }
       if (btnConfirmSpotifyImport) btnConfirmSpotifyImport.disabled = false;
       if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = false;
-    } finally {
-      fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-logout`, { method: 'POST' }).catch(() => {});
-      spotifyConnected = false;
-      if (spLoginStatus) {
-        spLoginStatus.textContent = 'Not connected';
-        spLoginStatus.style.color = 'var(--md-sys-color-outline)';
-      }
     }
   }
 

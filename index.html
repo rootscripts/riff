@@ -2253,7 +2253,7 @@
         </div>
       </div>
       <div class="sp-pane hidden" data-mode="login">
-        <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">1) Open developer.spotify.com/dashboard and create an app. 2) Add this Redirect URI: <code id="sp-redirect-uri" style="user-select: all; background: var(--md-sys-color-surface-container, rgba(255,255,255,0.06)); padding: 2px 6px; border-radius: 4px; font-family: monospace;"></code> 3) Paste the Client ID here. Spotify limits such apps to you and 5 allowed users, and the app owner needs Premium.</div>
+        <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">1) Open developer.spotify.com/dashboard and create an app. 2) Add this exact Redirect URI: <code id="sp-redirect-uri" style="user-select: all; background: var(--md-sys-color-surface-container, rgba(255,255,255,0.06)); padding: 2px 6px; border-radius: 4px; font-family: monospace;"></code> (use 127.0.0.1, not localhost). 3) Paste the Client ID here. The app owner needs Premium; add other accounts under User Management. If Spotify refuses a new app, use Export files instead.</div>
         <div style="position: relative; width: 100%; margin-bottom: 12px;">
           <input type="text" id="sp-client-id" class="pill-text-input" placeholder="Client ID" style="width: 100%; box-sizing: border-box;">
         </div>
