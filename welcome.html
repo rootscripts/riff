@@ -1405,7 +1405,9 @@
         const port = await this.serverPort();
         if (!port) return { success: false, error: 'Riff server is not available here' };
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/api/spotify-import?url=${encodeURIComponent(url)}`);
+          const res = await fetch(`http://127.0.0.1:${port}/api/spotify-import?url=${encodeURIComponent(url)}`, {
+            headers: { 'X-Riff-Token': this.api?.serverToken || '' }
+          });
           return await res.json();
         } catch (e) {
           return { success: false, error: 'Could not reach the Riff server' };
