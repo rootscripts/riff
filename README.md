@@ -1,11 +1,19 @@
 <p align="center">
-  <img src="banner.png" alt="Riff - desktop music player and audio suite for YouTube Music, SoundCloud, and local files" width="100%">
+  <img src="banner.png?v=2" alt="Riff - desktop music player and audio suite for YouTube Music, SoundCloud, and local files" width="100%">
 </p>
-
-<h1 align="center">Riff</h1>
-
-<p align="center"><b>An open-source desktop music hub and audio suite for YouTube Music, SoundCloud, and local media. Engineered with Material Design 3, zero telemetry, and no account requirements.</b></p>
-
+<div align="center">
+<table border="0">
+  <tr>
+    <td valign="middle" align="center">
+      <img src="github/readme/emoji.gif" width="64" height="64" alt="emoji">
+    </td>
+    <td valign="middle">
+      <h1>Riff</h1>
+    </td>
+  </tr>
+</table>
+<p align="center"><b>A free, open-source desktop music player for YouTube Music, SoundCloud, and local files. Built with Material Design 3, no tracking, and no account needed.</b></p>
+<img src="github/readme/emj.gif" width="20" height="20" align="absmiddle" alt="emoji">
 <p align="center">
   <a href="https://github.com/rootscripts/riff/commits/main">
     <img src="https://img.shields.io/github/last-commit/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=94C9FF" alt="Last Commit">
