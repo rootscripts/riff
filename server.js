@@ -3592,11 +3592,20 @@ async function spotifyGetWithRetry(requestUrl) {
     resp = await spotifyApiGet(requestUrl, token);
   }
   for (let attempt = 0; resp.status === 429 && attempt < 3; attempt++) {
-    const retryAfter = Number(resp.headers['retry-after']);
-    await new Promise(r => setTimeout(r, Number.isFinite(retryAfter) && retryAfter >= 0 ? Math.min(retryAfter, 30) * 1000 : 1000));
+    const retryAfter = spotifyRetryAfterSeconds(resp);
+    if (retryAfter > 30) return resp;
+    await new Promise(r => setTimeout(r, retryAfter * 1000));
     resp = await spotifyApiGet(requestUrl, token);
   }
   return resp;
+}
+
+function spotifyRetryAfterSeconds(resp) {
+  const raw = resp.headers?.['retry-after'];
+  const seconds = Number(raw);
+  if (raw !== undefined && Number.isFinite(seconds) && seconds >= 0) return seconds;
+  const date = Date.parse(raw);
+  return Number.isFinite(date) ? Math.max(0, (date - Date.now()) / 1000) : 1;
 }
 
 function spotifyApiFailure(resp, endpoint) {
@@ -3605,7 +3614,9 @@ function spotifyApiFailure(resp, endpoint) {
     const error = JSON.parse(resp.body).error;
     detail = typeof error === 'string' ? error : (error?.message || '');
   } catch (e) {}
-  const failure = new Error(`Spotify ${endpoint} returned HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
+  const failure = new Error(resp.status === 429
+    ? 'Spotify rate limited the request. Try again later.'
+    : `Spotify ${endpoint} returned HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
   failure.status = resp.status;
   return failure;
 }

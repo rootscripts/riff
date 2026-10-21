@@ -44,13 +44,15 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
   let refreshFailures = 1;
   let refreshNetworkFailures = 1;
   let rateLimits = 2;
+  let longRateLimit = '';
+  let trackRequests = 0;
   let apiUnavailable = false;
   let server;
 
   const reply = (callback, status, data) => {
     const response = new PassThrough();
     response.statusCode = status;
-    response.headers = status === 429 ? { 'retry-after': '0' } : {};
+    response.headers = status === 429 ? { 'retry-after': longRateLimit || '0' } : {};
     process.nextTick(() => { callback(response); response.end(typeof data === 'string' ? data : JSON.stringify(data)); });
     return response;
   };
@@ -94,6 +96,7 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
       }
       assert.strictEqual(options.headers.Authorization, `Bearer new-${refreshes}`);
       if (parsed.pathname === '/v1/me/tracks') {
+        trackRequests++;
         if (rateLimits-- > 0) return reply(callback, 429, { error: 'rate_limited' });
         return reply(callback, 200, { items: [], next: null });
       }
@@ -115,6 +118,16 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
     const stored = fs.readFileSync(path.join(dir, 'spotify-auth.enc'));
     assert.ok(!stored.includes(Buffer.from('refresh-2')));
     assert.strictEqual((await get(port, '/api/spotify-library?likes=1', token)).status, 200);
+    for (const retryAfter of ['60', new Date(Date.now() + 60000).toUTCString()]) {
+      longRateLimit = retryAfter;
+      rateLimits = 1;
+      const before = trackRequests;
+      const limited = await get(port, '/api/spotify-library?likes=1', token);
+      assert.strictEqual(limited.status, 429);
+      assert.match(limited.data.error, /Try again later/);
+      assert.strictEqual(trackRequests, before + 1);
+    }
+    longRateLimit = '';
     const linked = await get(port, `/api/spotify-import?url=https://open.spotify.com/playlist/${'a'.repeat(22)}`, token);
     assert.strictEqual(linked.status, 200);
     assert.strictEqual(linked.data.tracks.length, 101);
