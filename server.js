@@ -2883,7 +2883,7 @@ async function trySpotifyWebApi(playlistId) {
       }
       if (nextUrl || (Number.isInteger(playlistItems.total) && items.length < playlistItems.total)) return null;
       const tracks = items.map(it => {
-        const t = it.item || it.track || it;
+        const t = it?.item || it?.track || it || {};
         return {
           title: t.name || '',
           artist: Array.isArray(t.artists) ? t.artists.map(a => a.name).join(', ') : '',
@@ -3063,11 +3063,11 @@ async function handleSpotifyImport(req, res, inputUrl) {
       return res.end(JSON.stringify({ success: false, code: isPriv ? 'spotify_forbidden' : 'spotify_error', error: isPriv ? 'Private playlist' : 'Could not read tracks' }));
     }
 
-    if (limited && (!Number.isInteger(entity?.totalCount) || entity.totalCount > tracks.length)) {
+    if (limited && (!Array.isArray(entity?.trackList) || !Number.isInteger(entity.totalCount) || entity.totalCount > entity.trackList.length || entity.trackList.length > 100)) {
       res.writeHead(409, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: false, code: 'spotify_incomplete', error: 'Spotify exposed only part of this playlist. Connect your account or use Export files.' }));
     }
-    const hasMore = total > tracks.length;
+    const hasMore = false;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, name, cover, tracks, hasMore, total, limited }));
   } catch (err) {
@@ -3527,7 +3527,17 @@ async function getSpotifyAccessToken(forceRefresh = false) {
   if (!spotifyRefreshPromise) {
     spotifyRefreshPromise = (async () => {
       const session = spotifyAuth;
-      const result = await requestSpotifyToken({ grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId });
+      let result;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await requestSpotifyToken({ grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId });
+        } catch (err) {
+          result = undefined;
+          if (attempt === 2) throw err;
+        }
+        if (result && result.status !== 429 && result.status < 500) break;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 250 * (attempt + 1)));
+      }
       if (spotifyAuth !== session) throw new Error('Spotify session changed. Try again.');
       if (result.data?.error === 'invalid_grant') {
         spotifyAuth.token = '';
@@ -3581,9 +3591,9 @@ async function spotifyGetWithRetry(requestUrl) {
     token = await getSpotifyAccessToken(true);
     resp = await spotifyApiGet(requestUrl, token);
   }
-  if (resp.status === 429) {
-    const retryAfter = parseInt(resp.headers['retry-after'] || '1', 10);
-    await new Promise(r => setTimeout(r, Math.max(1, retryAfter) * 1000));
+  for (let attempt = 0; resp.status === 429 && attempt < 3; attempt++) {
+    const retryAfter = Number(resp.headers['retry-after']);
+    await new Promise(r => setTimeout(r, Number.isFinite(retryAfter) && retryAfter >= 0 ? Math.min(retryAfter, 30) * 1000 : 1000));
     resp = await spotifyApiGet(requestUrl, token);
   }
   return resp;
@@ -3595,7 +3605,9 @@ function spotifyApiFailure(resp, endpoint) {
     const error = JSON.parse(resp.body).error;
     detail = typeof error === 'string' ? error : (error?.message || '');
   } catch (e) {}
-  return new Error(`Spotify ${endpoint} returned HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
+  const failure = new Error(`Spotify ${endpoint} returned HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
+  failure.status = resp.status;
+  return failure;
 }
 
 async function handleSpotifyLibrary(req, res, query) {
@@ -3610,6 +3622,7 @@ async function handleSpotifyLibrary(req, res, query) {
 
   let likes = [];
   let playlists = [];
+  const skippedPlaylists = [];
 
   try {
     if (wantLikes) {
@@ -3650,7 +3663,7 @@ async function handleSpotifyLibrary(req, res, query) {
         plNext = data.next || null;
       }
 
-      for (const pl of userPlaylists) {
+      playlistLoop: for (const pl of userPlaylists) {
         const plTracks = [];
         let itemUrl = `https://api.spotify.com/v1/playlists/${encodeURIComponent(pl.id)}/items?limit=50`;
         let resp = await spotifyGetWithRetry(itemUrl);
@@ -3659,6 +3672,10 @@ async function handleSpotifyLibrary(req, res, query) {
           resp = await spotifyGetWithRetry(itemUrl);
         }
 
+        if (resp.status === 403) {
+          skippedPlaylists.push({ name: pl.name, error: spotifyApiFailure(resp, `playlist items (${pl.name})`).message });
+          continue;
+        }
         if (resp.status < 200 || resp.status >= 300) throw spotifyApiFailure(resp, `playlist items (${pl.name})`);
 
         const pageData = JSON.parse(resp.body);
@@ -3675,6 +3692,10 @@ async function handleSpotifyLibrary(req, res, query) {
         let trackNext = pageData.next || null;
         while (trackNext) {
           const nextResp = await spotifyGetWithRetry(trackNext);
+          if (nextResp.status === 403) {
+            skippedPlaylists.push({ name: pl.name, error: spotifyApiFailure(nextResp, `playlist items (${pl.name})`).message });
+            continue playlistLoop;
+          }
           if (nextResp.status < 200 || nextResp.status >= 300) throw spotifyApiFailure(nextResp, `playlist items (${pl.name})`);
           const nextData = JSON.parse(nextResp.body);
           if (!Array.isArray(nextData.items)) throw new Error(`Invalid Spotify playlist items (${pl.name}) response`);
@@ -3694,9 +3715,9 @@ async function handleSpotifyLibrary(req, res, query) {
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, likes, playlists }));
+    res.end(JSON.stringify({ success: true, partial: skippedPlaylists.length > 0, likes, playlists, skippedPlaylists }));
   } catch (err) {
-    res.writeHead(/returned HTTP 403/.test(err.message) ? 403 : 500, { 'Content-Type': 'application/json' });
+    res.writeHead(err.status === 403 ? 403 : err.status === 429 ? 429 : 500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, error: err.message }));
   }
 }

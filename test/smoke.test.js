@@ -97,7 +97,7 @@ test('renderer fetch sends the server token to Spotify account routes', async ()
   }
 });
 
-test('Spotify library fails instead of returning incomplete playlists', async () => {
+test('Spotify library reports skipped playlists and rejects malformed pages', async () => {
   let scenario = 'normal';
   const originalRequest = https.request;
   const originalGet = https.get;
@@ -117,8 +117,8 @@ test('Spotify library fails instead of returning incomplete playlists', async ()
     if (pathname === '/v1/me/tracks') return reply(callback, 200, scenario === 'malformed' ? '{' : scenario === 'missing-items' ? { next: null } : { items: [{ track: { name: 'Saved', artists: [{ name: 'Artist' }] } }], next: null });
     if (pathname === '/v1/me/playlists') return reply(callback, 200, { items: [{ id: 'followed', name: 'Followed' }, { id: 'owned', name: 'Owned' }], next: null });
     if (pathname === '/v1/playlists/followed/items') return reply(callback, scenario === 'first-403' ? 403 : 200, { items: [], next: null });
-    if (pathname === '/v1/playlists/owned/items' && new URL(url).searchParams.has('offset')) return reply(callback, 403, { error: { message: 'Forbidden' } });
-    if (pathname === '/v1/playlists/owned/items') return reply(callback, 200, { items: [{ item: { name: 'Track', artists: [{ name: 'Artist' }] } }], next: scenario === 'later-403' ? 'https://api.spotify.com/v1/playlists/owned/items?offset=50' : null });
+    if (pathname === '/v1/playlists/owned/items' && new URL(url).searchParams.has('offset')) return reply(callback, scenario === 'later-malformed' ? 200 : 403, scenario === 'later-malformed' ? '{' : { error: { message: 'Forbidden' } });
+    if (pathname === '/v1/playlists/owned/items') return reply(callback, 200, { items: [{ item: { name: 'Track', artists: [{ name: 'Artist' }] } }], next: scenario === 'later-403' || scenario === 'later-malformed' ? 'https://api.spotify.com/v1/playlists/owned/items?offset=50' : null });
     throw new Error(`Unexpected Spotify request: ${pathname}`);
   };
   try {
@@ -137,13 +137,25 @@ test('Spotify library fails instead of returning incomplete playlists', async ()
 
       scenario = 'first-403';
       const deniedFirstPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
-      assert.strictEqual(deniedFirstPage.statusCode, 403);
-      assert.strictEqual(JSON.parse(deniedFirstPage.body).success, false);
+      assert.strictEqual(deniedFirstPage.statusCode, 200);
+      const firstPageData = JSON.parse(deniedFirstPage.body);
+      assert.strictEqual(firstPageData.partial, true);
+      assert.strictEqual(firstPageData.skippedPlaylists[0].name, 'Followed');
+      assert.match(firstPageData.skippedPlaylists[0].error, /HTTP 403/);
+      assert.deepStrictEqual(firstPageData.playlists.map(pl => pl.name), ['Owned']);
 
       scenario = 'later-403';
       const deniedPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
-      assert.strictEqual(deniedPage.statusCode, 403);
-      assert.strictEqual(JSON.parse(deniedPage.body).success, false);
+      assert.strictEqual(deniedPage.statusCode, 200);
+      const laterPageData = JSON.parse(deniedPage.body);
+      assert.strictEqual(laterPageData.partial, true);
+      assert.deepStrictEqual(laterPageData.playlists.map(pl => pl.name), ['Followed']);
+      assert.strictEqual(laterPageData.skippedPlaylists[0].name, 'Owned');
+
+      scenario = 'later-malformed';
+      const malformedPlaylist = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
+      assert.strictEqual(malformedPlaylist.statusCode, 500);
+      assert.strictEqual(JSON.parse(malformedPlaylist.body).success, false);
 
       scenario = 'malformed';
       const malformedPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
@@ -161,4 +173,35 @@ test('Spotify library fails instead of returning incomplete playlists', async ()
     https.request = originalRequest;
     https.get = originalGet;
   }
+});
+
+test('renderer requires consent before importing a partial Spotify library', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const start = source.indexOf('  async function handleSpotifyLoginImport()');
+  const end = source.indexOf('  async function handleSpotifyImportAction()', start);
+  assert.ok(start > 0 && end > start);
+  let approved = false;
+  let imported = null;
+  let prompt = '';
+  const context = {
+    spChkLikes2: { checked: true }, spChkPlaylists2: { checked: true },
+    spotifyStatus: { textContent: '', style: {}, classList: { remove() {} } },
+    btnConfirmSpotifyImport: { disabled: false }, btnCancelSpotifyImport: { disabled: false },
+    state: { serverPort: 1234 }, spotifyHeaders: { 'X-Riff-Token': 'secret' },
+    window: { confirm(message) { prompt = message; return approved; } },
+    fetch: async (url, options) => {
+      assert.match(url, /\/api\/spotify-library\?/);
+      assert.strictEqual(options.headers['X-Riff-Token'], 'secret');
+      return { json: async () => ({ success: true, partial: true, likes: [{ title: 'Saved' }], playlists: [], skippedPlaylists: [{ name: 'Blocked', error: 'HTTP 403' }] }) };
+    },
+    runSpotifyImport: async data => { imported = data; }
+  };
+  const handler = vm.runInNewContext(`${source.slice(start, end)}\nhandleSpotifyLoginImport`, context);
+  await handler();
+  assert.match(prompt, /Blocked: HTTP 403/);
+  assert.strictEqual(imported, null);
+  assert.strictEqual(context.btnConfirmSpotifyImport.disabled, false);
+  approved = true;
+  await handler();
+  assert.strictEqual(imported.skippedPlaylists[0].name, 'Blocked');
 });

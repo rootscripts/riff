@@ -40,12 +40,17 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
   let rejectRefresh = false;
   let embedRequests = 0;
   let embedTotal = 2;
+  let embedUnavailable = false;
+  let refreshFailures = 1;
+  let refreshNetworkFailures = 1;
+  let rateLimits = 2;
+  let apiUnavailable = false;
   let server;
 
   const reply = (callback, status, data) => {
     const response = new PassThrough();
     response.statusCode = status;
-    response.headers = {};
+    response.headers = status === 429 ? { 'retry-after': '0' } : {};
     process.nextTick(() => { callback(response); response.end(typeof data === 'string' ? data : JSON.stringify(data)); });
     return response;
   };
@@ -60,7 +65,7 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
     https.request = (_url, _options, callback) => {
       let body = '';
       return {
-        on() { return this; },
+        on(event, handler) { if (event === 'error') this.errorHandler = handler; return this; },
         write(chunk) { body += chunk; },
         end() {
           const params = new URLSearchParams(body);
@@ -70,6 +75,8 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
             assert.strictEqual(params.get('grant_type'), 'refresh_token');
             assert.strictEqual(params.get('refresh_token'), `refresh-${refreshes + 1}`);
             if (rejectRefresh) return reply(callback, 400, { error: 'invalid_grant' });
+            if (refreshNetworkFailures-- > 0) return process.nextTick(() => this.errorHandler(new Error('Temporary network failure')));
+            if (refreshFailures-- > 0) return reply(callback, 503, { error: 'temporarily_unavailable' });
             refreshes++;
             reply(callback, 200, { access_token: `new-${refreshes}`, refresh_token: `refresh-${refreshes + 1}`, expires_in: 3600 });
           }
@@ -81,12 +88,19 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
       const parsed = new URL(url);
       if (parsed.hostname === 'open.spotify.com') {
         embedRequests++;
-        return reply(callback, 200, `<script id="__NEXT_DATA__">{"props":{"pageProps":{"state":{"data":{"entity":{"name":"Public","totalCount":${embedTotal},"trackList":[{"title":"One","subtitle":"Artist"}]}}}}}}</script>`);
+        const trackList = [{ title: 'One', subtitle: 'Artist' }];
+        if (embedUnavailable) trackList.push({ title: '', subtitle: '' });
+        return reply(callback, 200, `<script id="__NEXT_DATA__">${JSON.stringify({ props: { pageProps: { state: { data: { entity: { name: 'Public', totalCount: embedTotal, trackList } } } } } })}</script>`);
       }
       assert.strictEqual(options.headers.Authorization, `Bearer new-${refreshes}`);
-      if (parsed.pathname === '/v1/me/tracks') return reply(callback, 200, { items: [], next: null });
-      if (parsed.pathname === `/v1/playlists/${'a'.repeat(22)}`) return reply(callback, 200, { name: 'Complete', items: { items: [{ item: { name: 'One', artists: [{ name: 'Artist' }] } }], next: `https://api.spotify.com/v1/playlists/${'a'.repeat(22)}/items?offset=1`, total: 2 } });
-      if (parsed.pathname === `/v1/playlists/${'a'.repeat(22)}/items`) return reply(callback, 200, { items: [{ item: { name: 'Two', artists: [{ name: 'Artist' }] } }], next: null });
+      if (parsed.pathname === '/v1/me/tracks') {
+        if (rateLimits-- > 0) return reply(callback, 429, { error: 'rate_limited' });
+        return reply(callback, 200, { items: [], next: null });
+      }
+      if (parsed.pathname === `/v1/playlists/${'a'.repeat(22)}`) return reply(callback, 200, apiUnavailable
+        ? { name: 'Available', items: { items: [{ item: { name: 'One', artists: [{ name: 'Artist' }] } }, { item: null }], next: null, total: 2 } }
+        : { name: 'Complete', items: { items: Array.from({ length: 100 }, (_, i) => ({ item: { name: `Track ${i}`, artists: [{ name: 'Artist' }] } })), next: `https://api.spotify.com/v1/playlists/${'a'.repeat(22)}/items?offset=100`, total: 101 } });
+      if (parsed.pathname === `/v1/playlists/${'a'.repeat(22)}/items`) return reply(callback, 200, { items: [{ item: { name: 'Track 100', artists: [{ name: 'Artist' }] } }], next: null });
       throw new Error(`Unexpected request: ${url}`);
     };
 
@@ -103,8 +117,13 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
     assert.strictEqual((await get(port, '/api/spotify-library?likes=1', token)).status, 200);
     const linked = await get(port, `/api/spotify-import?url=https://open.spotify.com/playlist/${'a'.repeat(22)}`, token);
     assert.strictEqual(linked.status, 200);
-    assert.deepStrictEqual(linked.data.tracks.map(track => track.title), ['One', 'Two']);
+    assert.strictEqual(linked.data.tracks.length, 101);
+    assert.strictEqual(linked.data.tracks[100].title, 'Track 100');
     assert.strictEqual(embedRequests, 0);
+    apiUnavailable = true;
+    const available = await get(port, `/api/spotify-import?url=https://open.spotify.com/playlist/${'a'.repeat(22)}`, token);
+    assert.strictEqual(available.status, 200);
+    assert.deepStrictEqual(available.data.tracks.map(track => track.title), ['One']);
 
     await server.stopServer();
     delete require.cache[require.resolve('../server')];
@@ -123,6 +142,12 @@ test('Spotify login persists securely, refreshes, restores, and rejects partial 
     const publicPlaylist = await get(port, `/api/spotify-import?url=https://open.spotify.com/playlist/${'a'.repeat(22)}`, restoredToken);
     assert.strictEqual(publicPlaylist.status, 200);
     assert.strictEqual(publicPlaylist.data.tracks[0].title, 'One');
+    embedTotal = 2;
+    embedUnavailable = true;
+    const withUnavailable = await get(port, `/api/spotify-import?url=https://open.spotify.com/playlist/${'a'.repeat(22)}`, restoredToken);
+    assert.strictEqual(withUnavailable.status, 200);
+    assert.strictEqual(withUnavailable.data.tracks.length, 1);
+    assert.strictEqual(withUnavailable.data.hasMore, false);
 
     refreshes = 0;
     const again = await get(port, `/api/spotify-auth-start?clientId=${'a'.repeat(32)}`, restoredToken);

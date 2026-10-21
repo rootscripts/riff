@@ -11510,7 +11510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (spotifyModal) closeModal(spotifyModal);
   }
 
-  async function runSpotifyImport({ likes = [], playlists = [] }) {
+  async function runSpotifyImport({ likes = [], playlists = [], skippedPlaylists = [] }) {
     const likesToImport = likes || [];
     const playlistsToImport = playlists || [];
     const totalItemsCount = likesToImport.length + playlistsToImport.reduce((acc, p) => acc + (p.tracks ? p.tracks.length : 0), 0);
@@ -11589,9 +11589,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const notFound = totalItemsCount - totalFoundCount;
       if (spotifyProgressWrap) spotifyProgressWrap.classList.add('hidden');
-      const finishMsg = notFound > 0
+      const finishMsg = (notFound > 0
         ? `Imported ${totalFoundCount} tracks (${notFound} skipped)`
-        : `Imported ${totalFoundCount} tracks`;
+        : `Imported ${totalFoundCount} tracks`) + (skippedPlaylists.length ? `; ${skippedPlaylists.length} Spotify playlists unavailable` : '');
       if (spotifyStatus) {
         spotifyStatus.textContent = finishMsg;
         spotifyStatus.style.color = 'var(--md-sys-color-primary, #6750A4)';
@@ -11689,7 +11689,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!(data.likes?.length || data.playlists?.some(pl => pl.tracks?.length))) {
         if (spotifyStatus) {
-          spotifyStatus.textContent = 'No tracks found in your Spotify library';
+          spotifyStatus.textContent = data.partial
+            ? `No available tracks to import. ${(data.skippedPlaylists || []).map(pl => `${pl.name}: ${pl.error}`).join('; ')}`
+            : 'No tracks found in your Spotify library';
           spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
           spotifyStatus.classList.remove('hidden');
         }
@@ -11697,7 +11699,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = false;
         return;
       }
-      await runSpotifyImport({ likes: data.likes || [], playlists: data.playlists || [] });
+      if (data.partial) {
+        const skipped = data.skippedPlaylists || [];
+        const details = skipped.map(pl => `• ${pl.name}: ${pl.error}`).join('\n');
+        if (!window.confirm(`${skipped.length} Spotify playlist(s) could not be read:\n${details}\n\nImport the available tracks only?`)) {
+          if (spotifyStatus) {
+            spotifyStatus.textContent = 'Partial import cancelled';
+            spotifyStatus.classList.remove('hidden');
+          }
+          if (btnConfirmSpotifyImport) btnConfirmSpotifyImport.disabled = false;
+          if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = false;
+          return;
+        }
+      }
+      await runSpotifyImport({ likes: data.likes || [], playlists: data.playlists || [], skippedPlaylists: data.skippedPlaylists || [] });
     } catch (err) {
       if (spotifyStatus) {
         spotifyStatus.textContent = err.message || 'Failed to fetch Spotify library';
