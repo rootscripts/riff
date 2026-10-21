@@ -11,7 +11,7 @@
     window.fetch = function (input, init) {
       try {
         const raw = typeof input === 'string' ? input : (input && input.url) || '';
-        if (raw.indexOf('/api/') !== -1) {
+        if (raw.startsWith('http://127.0.0.1:') && new URL(raw).pathname.startsWith('/api/')) {
           const opts = Object.assign({}, init || {});
           const headers = new Headers(opts.headers || (input && input.headers) || undefined);
           headers.set('X-Riff-Token', token);
@@ -11131,15 +11131,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   let parsedSpotifyExport = { likes: [], playlists: [] };
   let spLoginPollTimer = null;
   let spotifyConnected = false;
+  const spotifyHeaders = { 'X-Riff-Token': window.electronAPI?.serverToken || '' };
 
   async function checkSpotifyAuthStatus() {
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-status`);
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-status`, { headers: spotifyHeaders });
       const data = await res.json();
       spotifyConnected = !!data.connected;
       if (spLoginStatus) {
         if (spotifyConnected) {
-          spLoginStatus.textContent = 'Connected';
+          spLoginStatus.textContent = data.error ? `Connected · ${data.error}` : 'Connected';
           spLoginStatus.style.color = 'var(--md-sys-color-primary, #6750A4)';
         } else {
           spLoginStatus.textContent = data.error || 'Not connected';
@@ -11174,6 +11175,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const unknownIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 
     if (body && typeof body === 'object') {
+      if (body.code === 'spotify_incomplete') {
+        return { code: 'spotify_incomplete', title: 'Spotify returned only part of this playlist', hint: 'Connect your account or use Export files', icon: restrictedIcon };
+      }
       if (body.code === 'spotify_forbidden' || (provider === 'spotify' && status === 403)) {
         return { code: 'spotify_forbidden', title: 'Spotify refused this playlist request (403)', hint: 'Try connecting an authorized account or use Export files', icon: restrictedIcon };
       }
@@ -11291,7 +11295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       try {
-        const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-auth-start?clientId=${encodeURIComponent(clientId)}`);
+        const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-auth-start?clientId=${encodeURIComponent(clientId)}`, { headers: spotifyHeaders });
         const data = await res.json();
         if (!data.success) {
           if (spLoginStatus) {
@@ -11330,9 +11334,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
           }
           try {
-            const sRes = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-status`);
+            const sRes = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-status`, { headers: spotifyHeaders });
             const sData = await sRes.json();
-            if (sData.error) {
+            if (sData.connected) {
+              clearInterval(spLoginPollTimer);
+              spLoginPollTimer = null;
+              spotifyConnected = true;
+              if (spLoginStatus) {
+                spLoginStatus.textContent = sData.error ? `Connected · ${sData.error}` : 'Connected';
+                spLoginStatus.style.color = 'var(--md-sys-color-primary, #6750A4)';
+              }
+              if (currentSpotifyImportMode === 'login' && btnConfirmSpotifyImport) {
+                btnConfirmSpotifyImport.disabled = false;
+              }
+            } else if (sData.error) {
               clearInterval(spLoginPollTimer);
               spLoginPollTimer = null;
               if (spLoginStatus) {
@@ -11340,18 +11355,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 spLoginStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
               }
               return;
-            }
-            if (sData.connected) {
-              clearInterval(spLoginPollTimer);
-              spLoginPollTimer = null;
-              spotifyConnected = true;
-              if (spLoginStatus) {
-                spLoginStatus.textContent = 'Connected';
-                spLoginStatus.style.color = 'var(--md-sys-color-primary, #6750A4)';
-              }
-              if (currentSpotifyImportMode === 'login' && btnConfirmSpotifyImport) {
-                btnConfirmSpotifyImport.disabled = false;
-              }
             }
           } catch (e) {}
         }, 2000);
@@ -11671,7 +11674,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = true;
 
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-library?likes=${doLikes ? 1 : 0}&playlists=${doPlaylists ? 1 : 0}`);
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-library?likes=${doLikes ? 1 : 0}&playlists=${doPlaylists ? 1 : 0}`, { headers: spotifyHeaders });
       const data = await res.json();
       if (!data.success) {
         if (spotifyStatus) {
@@ -11686,9 +11689,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!(data.likes?.length || data.playlists?.some(pl => pl.tracks?.length))) {
         if (spotifyStatus) {
-          spotifyStatus.textContent = data.skippedPlaylists?.length
-            ? `${data.skippedPlaylists.length} playlist(s) skipped: Spotify denied access to their tracks. In Development Mode only playlists you own or collaborate on are available. Try a playlist link or Export files.`
-            : 'No tracks found in your Spotify library';
+          spotifyStatus.textContent = 'No tracks found in your Spotify library';
           spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
           spotifyStatus.classList.remove('hidden');
         }
@@ -11697,10 +11698,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       await runSpotifyImport({ likes: data.likes || [], playlists: data.playlists || [] });
-      if (data.skippedPlaylists?.length && spotifyStatus && btnConfirmSpotifyImport?.dataset.action === 'done') {
-        spotifyStatus.textContent += ` · ${data.skippedPlaylists.length} playlist(s) skipped: Spotify denied track access (in Development Mode, only owned or collaborative playlists are available).`;
-        spotifyStatus.classList.remove('hidden');
-      }
     } catch (err) {
       if (spotifyStatus) {
         spotifyStatus.textContent = err.message || 'Failed to fetch Spotify library';
@@ -11817,9 +11814,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (fs.errors > notFound / 2 && fs.commonError) {
           finishMsg += ` Search errors: ${fs.commonError}`;
         }
-      }
-      if (data.limited) {
-        finishMsg += ' Only the first 100 tracks could be read; use the Export files tab for the full list.';
       }
       if (window.__riffLogError) window.__riffLogError('INFO', 'Import summary: ' + finishMsg);
       if (spotifyStatus) {

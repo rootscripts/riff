@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 const https = require('node:https');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 const { PassThrough } = require('node:stream');
 
 const { startServer, stopServer, getServerToken } = require('../server');
@@ -79,7 +82,23 @@ test('Spotify login reports callback errors and protects account routes', async 
   }
 });
 
-test('Spotify import skips followed playlists whose items return 403', async () => {
+test('renderer fetch sends the server token to Spotify account routes', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const renderer = { electronAPI: { serverToken: getServerToken() }, fetch: fetch.bind(globalThis) };
+  vm.runInNewContext(source.slice(0, source.indexOf('})();') + 5), { window: renderer, Headers, URL });
+  const port = await startServer(0);
+  try {
+    for (const route of ['/api/spotify-auth-start?clientId=' + 'a'.repeat(32), '/api/spotify-status', '/api/spotify-library?likes=1', '/api/spotify-logout']) {
+      const res = await renderer.fetch(`http://127.0.0.1:${port}${route}`);
+      assert.notStrictEqual(res.status, 403, route);
+    }
+  } finally {
+    await stopServer();
+  }
+});
+
+test('Spotify library fails instead of returning incomplete playlists', async () => {
+  let scenario = 'normal';
   const originalRequest = https.request;
   const originalGet = https.get;
   const reply = (callback, statusCode, data) => {
@@ -88,17 +107,18 @@ test('Spotify import skips followed playlists whose items return 403', async () 
     response.headers = {};
     process.nextTick(() => {
       callback(response);
-      response.end(JSON.stringify(data));
+      response.end(typeof data === 'string' ? data : JSON.stringify(data));
     });
     return { on() { return this; }, write() {}, end() {}, destroy() {} };
   };
   https.request = (_url, _options, callback) => reply(callback, 200, { access_token: 'mock-token' });
   https.get = (url, _options, callback) => {
     const pathname = new URL(url).pathname;
-    if (pathname === '/v1/me/tracks') return reply(callback, 200, { items: [{ track: { name: 'Saved', artists: [{ name: 'Artist' }] } }], next: null });
+    if (pathname === '/v1/me/tracks') return reply(callback, 200, scenario === 'malformed' ? '{' : scenario === 'missing-items' ? { next: null } : { items: [{ track: { name: 'Saved', artists: [{ name: 'Artist' }] } }], next: null });
     if (pathname === '/v1/me/playlists') return reply(callback, 200, { items: [{ id: 'followed', name: 'Followed' }, { id: 'owned', name: 'Owned' }], next: null });
-    if (pathname === '/v1/playlists/followed/items') return reply(callback, 403, { error: { message: 'Forbidden' } });
-    if (pathname === '/v1/playlists/owned/items') return reply(callback, 200, { items: [{ item: { name: 'Track', artists: [{ name: 'Artist' }] } }], next: null });
+    if (pathname === '/v1/playlists/followed/items') return reply(callback, scenario === 'first-403' ? 403 : 200, { items: [], next: null });
+    if (pathname === '/v1/playlists/owned/items' && new URL(url).searchParams.has('offset')) return reply(callback, 403, { error: { message: 'Forbidden' } });
+    if (pathname === '/v1/playlists/owned/items') return reply(callback, 200, { items: [{ item: { name: 'Track', artists: [{ name: 'Artist' }] } }], next: scenario === 'later-403' ? 'https://api.spotify.com/v1/playlists/owned/items?offset=50' : null });
     throw new Error(`Unexpected Spotify request: ${pathname}`);
   };
   try {
@@ -111,10 +131,29 @@ test('Spotify import skips followed playlists whose items return 403', async () 
       const response = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
       assert.strictEqual(response.statusCode, 200);
       const data = JSON.parse(response.body);
-      assert.deepStrictEqual(data.skippedPlaylists, ['Followed']);
       assert.strictEqual(data.likes[0].title, 'Saved');
-      assert.strictEqual(data.playlists[0].name, 'Owned');
-      assert.strictEqual(data.playlists[0].tracks[0].title, 'Track');
+      assert.strictEqual(data.playlists[1].name, 'Owned');
+      assert.strictEqual(data.playlists[1].tracks[0].title, 'Track');
+
+      scenario = 'first-403';
+      const deniedFirstPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
+      assert.strictEqual(deniedFirstPage.statusCode, 403);
+      assert.strictEqual(JSON.parse(deniedFirstPage.body).success, false);
+
+      scenario = 'later-403';
+      const deniedPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
+      assert.strictEqual(deniedPage.statusCode, 403);
+      assert.strictEqual(JSON.parse(deniedPage.body).success, false);
+
+      scenario = 'malformed';
+      const malformedPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
+      assert.strictEqual(malformedPage.statusCode, 500);
+      assert.strictEqual(JSON.parse(malformedPage.body).success, false);
+
+      scenario = 'missing-items';
+      const invalidPage = await request(port, '/api/spotify-library?likes=1&playlists=1', headers);
+      assert.strictEqual(invalidPage.statusCode, 500);
+      assert.strictEqual(JSON.parse(invalidPage.body).success, false);
     } finally {
       await stopServer();
     }

@@ -10,3 +10,5 @@ bin/ffprobe.exe
 .DS_Store
 .env
 dev-app-update.yml
+plugins/lastfm-scrobbler.js
+test/lastfm-scrobbler.test.js
