@@ -2623,15 +2623,11 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const vid = extractYtIdFromAny(candId);
       if (!vid) return null;
       let s = null;
-      if (!forceYtDlp) {
-        try { s = await fetchDirectYoutubeStreamServer(vid, quality); } catch (_) {}
-        if (s) return s;
-      }
       const vUrl = `https://www.youtube.com/watch?v=${vid}`;
       const hasCookies = fs.existsSync(YT_COOKIES_FILE);
       const clientSpecs = hasCookies
-        ? ['web,tv,ios', 'default']
-        : ['web_embedded,web,tv', 'ios'];
+        ? ['default', 'web,tv,ios']
+        : ['default', 'web_embedded,web,tv'];
       for (const clientSpec of clientSpecs) {
         if (s) break;
         try {
@@ -2661,6 +2657,9 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
             break;
           }
         }
+      }
+      if (!s && !forceYtDlp) {
+        try { s = await fetchDirectYoutubeStreamServer(vid, quality); } catch (_) {}
       }
       return s;
     };
