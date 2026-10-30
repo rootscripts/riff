@@ -4238,6 +4238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyTrackRenames(track);
     if (typeof queueList === "number") { startIndex = queueList; queueList = state.queue; }
     if (!track || !el.nativeAudio) return;
+    applyPlaylistEntryPreset(track);
     const selectedQuality = localStorage.getItem('riff_audio_quality') || 'medium';
     if (track._preloadedStreamQuality && track._preloadedStreamQuality !== selectedQuality) {
       delete track._preloadedStreamUrl;
@@ -8652,6 +8653,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Playlist presets are snapshots attached to playlist entries, not global
+  // preferences or modifications of the underlying song/audio file.
+  let presetBeforePlaylistPlayback = null;
+  function applyPlaylistEntryPreset(track) {
+    const saved = track && track.playlistAudioPreset;
+    if (saved && saved.settings) {
+      if (!presetBeforePlaylistPlayback) {
+        const prior = getAllPresets().find(p => p.id === state.activePresetId);
+        presetBeforePlaylistPlayback = prior
+          ? JSON.parse(JSON.stringify(prior))
+          : { id: state.activePresetId || 'p_default', name: 'Previous sound', settings: JSON.parse(JSON.stringify(state.audioSettings)) };
+      }
+      applyPreset(saved);
+    } else if (presetBeforePlaylistPlayback) {
+      const prior = presetBeforePlaylistPlayback;
+      presetBeforePlaylistPlayback = null;
+      applyPreset(prior);
+    }
+  }
+
   function saveCustomPreset(name) {
     if (!name || !name.trim()) return;
     const newPreset = {
@@ -13018,6 +13039,15 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     trackToAddToPlaylist = track;
     if (!el.playlistPickList) return;
 
+    const presetSelect = document.getElementById('playlist-save-audio-preset');
+    if (presetSelect) {
+      presetSelect.replaceChildren(new Option('No assigned preset (normal playback)', ''));
+      for (const preset of getAllPresets()) {
+        presetSelect.add(new Option(preset.name, preset.id));
+      }
+      presetSelect.value = '';
+    }
+
     const trackPreviewEl = document.getElementById('add-playlist-track-preview');
     if (trackPreviewEl) {
       if (Array.isArray(track)) {
@@ -13138,11 +13168,20 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         item.appendChild(actionEl);
 
         item.addEventListener('click', () => {
+          const chosenId = presetSelect ? presetSelect.value : '';
+          const chosenPreset = chosenId ? getAllPresets().find(p => p.id === chosenId) : null;
+          const makePlaylistEntry = (t) => {
+            const entry = stampAddedAt(t);
+            // A song can exist in several playlists with different presets.
+            delete entry.playlistAudioPreset;
+            if (chosenPreset) entry.playlistAudioPreset = JSON.parse(JSON.stringify(normalizePreset(chosenPreset)));
+            return entry;
+          };
           if (Array.isArray(track)) {
             let addedCount = 0;
             if (!Array.isArray(pl.tracks)) pl.tracks = [];
             track.forEach(t => {
-              pl.tracks.push(stampAddedAt(t));
+              pl.tracks.push(makePlaylistEntry(t));
               addedCount++;
             });
             localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
@@ -13153,7 +13192,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
             showToast(`Added ${addedCount} tracks to "${pl.name}"`, 'success');
             clearTrackSelection();
           } else if (track) {
-            pl.tracks.push(stampAddedAt(track));
+            pl.tracks.push(makePlaylistEntry(track));
             localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
             renderPlaylistsList();
             if (state.currentView === 'playlist-detail' && state.currentPlaylistId === pl.id) {
