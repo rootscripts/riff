@@ -19,6 +19,12 @@ const net = require('net');
 const PORT = 38472;
 const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, defaultDownloadDir, resolveBinary, clearBinaryCache, cookieJarHasYtLogin } = require('../shared/platform');
 const YT_COOKIES_FILE = path.join(DATA_DIR, 'yt-cookies.txt');
+const { hasYouTubeLoginCookies, youtubeAudioAttempts } = require('../shared/youtube-playback');
+
+function canUseYoutubeCookieJar() {
+  try { return hasYouTubeLoginCookies(fs.readFileSync(YT_COOKIES_FILE, 'utf8')); }
+  catch (_) { return false; }
+}
 
 // A browser cookie export can contain .google.com session cookies without the
 // user actually being signed in to YouTube. Passing those to yt-dlp makes the
@@ -84,15 +90,15 @@ try { fs.mkdirSync(I18N_DIR, { recursive: true }); } catch (_) {}
 
 const I18N_FIX = {
   ru: {
-    'About': 'О приложении',
-    'About the artist': 'Об исполнителе',
-    'Follow': 'Подписаться',
-    'Following': 'Вы подписаны',
-    'Word': 'Слово',
-    'Line': 'Строка',
-    'Default output': 'Устройство по умолчанию',
-    'No local tracks in library yet.': 'В библиотеке пока нет локальных треков.',
-    'Add files': 'Добавить файлы'
+    'About': 'Ðž Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ð¸',
+    'About the artist': 'ÐžÐ± Ð¸ÑÐ¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»Ðµ',
+    'Follow': 'ÐŸÐ¾Ð´Ð¿Ð¸ÑÐ°Ñ‚ÑŒÑÑ',
+    'Following': 'Ð’Ñ‹ Ð¿Ð¾Ð´Ð¿Ð¸ÑÐ°Ð½Ñ‹',
+    'Word': 'Ð¡Ð»Ð¾Ð²Ð¾',
+    'Line': 'Ð¡Ñ‚Ñ€Ð¾ÐºÐ°',
+    'Default output': 'Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð¿Ð¾ ÑƒÐ¼Ð¾Ð»Ñ‡Ð°Ð½Ð¸ÑŽ',
+    'No local tracks in library yet.': 'Ð’ Ð±Ð¸Ð±Ð»Ð¸Ð¾Ñ‚ÐµÐºÐµ Ð¿Ð¾ÐºÐ° Ð½ÐµÑ‚ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ñ… Ñ‚Ñ€ÐµÐºÐ¾Ð².',
+    'Add files': 'Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ñ„Ð°Ð¹Ð»Ñ‹'
   }
 };
 
@@ -321,7 +327,7 @@ function cacheSet(map, key, value, max = MAX_CACHE_ENTRIES) {
 
 let currentAppState = {};
 const sseClients = new Set();
-const YT_PLAYER_CLIENTS = ['default', 'android_vr'];
+const YT_PLAYER_CLIENTS = ['android'];
 const YT_EXTRACTOR_ARGS = 'youtube:player_client=' + YT_PLAYER_CLIENTS.join(',');
 const ytContentLengthByUrl = new Map();
 function rememberYtContentLength(u, len) {
@@ -963,7 +969,7 @@ function buildDiscoveryQueries(profile) {
   }
 
   if (profile.dominantScript === 'Cyrillic' && shuffled.length > 0) {
-    queries.push(`${shuffled[0]} похожие песни`);
+    queries.push(`${shuffled[0]} Ð¿Ð¾Ñ…Ð¾Ð¶Ð¸Ðµ Ð¿ÐµÑÐ½Ð¸`);
   }
 
   if (queries.length === 0) {
@@ -1588,7 +1594,7 @@ async function recommendVibeTracks(historyTracks, favoriteTracks, platform = 'yo
 
 function isTextExplicit(text) {
   if (!text) return false;
-  return /\bexplicit\b|\[e\]|\(e\)|\[explicit\]|\(explicit\)|\b18\+\b|\[18\+\]|\(18\+\)|\b\+18\b|\[\+18\]|\(\+18\)|\buncensored\b|\[uncensored\]|\(uncensored\)|\bdirty\b|\[dirty\]|\(dirty\)|без\s+цензуры|нецензурн|\bмат\b/i.test(text) || (typeof isLyricsExplicit === 'function' && isLyricsExplicit(text));
+  return /\bexplicit\b|\[e\]|\(e\)|\[explicit\]|\(explicit\)|\b18\+\b|\[18\+\]|\(18\+\)|\b\+18\b|\[\+18\]|\(\+18\)|\buncensored\b|\[uncensored\]|\(uncensored\)|\bdirty\b|\[dirty\]|\(dirty\)|Ð±ÐµÐ·\s+Ñ†ÐµÐ½Ð·ÑƒÑ€Ñ‹|Ð½ÐµÑ†ÐµÐ½Ð·ÑƒÑ€Ð½|\bÐ¼Ð°Ñ‚\b/i.test(text) || (typeof isLyricsExplicit === 'function' && isLyricsExplicit(text));
 }
 
 function directYoutubeSearch(query, isMusic = false, limit = 40) {
@@ -1711,6 +1717,11 @@ function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
         prependFlags.push('--cookies', YT_COOKIES_FILE);
       }
     }
+    const cleanupCookies = () => {
+      if (!temporaryCookies) return;
+      try { fs.unlinkSync(temporaryCookies); } catch (_) {}
+      temporaryCookies = '';
+    };
     if (prependFlags.length > 0) {
       finalArgs.unshift(...prependFlags);
     }
@@ -1730,7 +1741,9 @@ function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
     }
     const cmd = ytDlpCommand(finalArgs);
     const YTDLP_PATH = cmd.bin;
-    const proc = spawn(YTDLP_PATH, cmd.args, { windowsHide: true, env: cleanEnv });
+    let proc;
+    try { proc = spawn(YTDLP_PATH, cmd.args, { windowsHide: true, env: cleanEnv }); }
+    catch (error) { cleanupCookies(); return reject(error); }
     if (opts && typeof opts.onChild === 'function') {
       try { opts.onChild(proc); } catch (_) {}
     }
@@ -1951,6 +1964,20 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   })).catch(() => { downloadingSet.delete(cleanId); });
 }
 
+async function resolveVerifiedYoutubeAudio(vid, format, client, run = executeYtDlp, verify = verifyStreamPlayable, useCookies = false) {
+  const args = [
+    '--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates',
+    '--socket-timeout', '6', '--retries', '1',
+    '--extractor-args', 'youtube:player_client=' + client,
+    '-f', format, '--', 'https://www.youtube.com/watch?v=' + vid
+  ];
+  const raw = await run(args, 14000, { noCookies: !useCookies });
+  for (const candidate of raw.split('\n').map(line => line.trim()).filter(line => line.startsWith('https://'))) {
+    if (await verify(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function prefetchTrack(trackUrl, trackId, platform) {
   trackUrl = normalizeSoundCloudUrl(trackUrl);
   let cleanId = cleanTrackId(trackId);
@@ -1970,7 +1997,9 @@ async function prefetchTrack(trackUrl, trackId, platform) {
     if (platform === 'soundcloud' || (trackUrl && trackUrl.includes('soundcloud.com'))) {
       streamUrl = await fetchDirectSoundCloudStreamServer(trackUrl || cleanId, '');
     } else if (cleanId && /^[a-zA-Z0-9_-]{11}$/.test(cleanId)) {
-      streamUrl = await fetchDirectYoutubeStreamServer(cleanId, quality);
+      // Never put unverified direct URLs into the prefetch cache.
+      streamUrl = await resolveVerifiedYoutubeAudio(cleanId,
+        'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/18/best', 'android');
     }
     if (streamUrl) {
       const isHls = streamUrl.includes('.m3u8');
@@ -2101,7 +2130,7 @@ function parseYtmSongs(json) {
       const segments = [];
       let cur = [];
       for (const run of runsOf(1)) {
-        if (run.text === ' • ') { segments.push(cur.join('').trim()); cur = []; } else cur.push(run.text);
+        if (run.text === ' â€¢ ') { segments.push(cur.join('').trim()); cur = []; } else cur.push(run.text);
       }
       segments.push(cur.join('').trim());
       const clean = segments.filter((s) => s && !/^(song|video)$/i.test(s));
@@ -2119,7 +2148,7 @@ function parseYtmSongs(json) {
           const badge = b.musicInlineBadgeRenderer;
           return badge && (
             badge.icon?.iconType === 'MUSIC_EXPLICIT_BADGE' ||
-            /explicit|нецензурн|18\+/i.test(badge.accessibilityData?.accessibilityData?.label || '')
+            /explicit|Ð½ÐµÑ†ÐµÐ½Ð·ÑƒÑ€Ð½|18\+/i.test(badge.accessibilityData?.accessibilityData?.label || '')
           );
         })) ||
         isTextExplicit(title) ||
@@ -2175,15 +2204,15 @@ async function searchYtmTracks(query, limit = 16) {
 function cleanTitleForMatching(t) {
   return (t || '')
     .toLowerCase()
-    .replace(/\s*[\(\[][^\)\]]*(?:official|audio|video|lyrics|клип|трек|prod|feat|ft|slowed|reverb|remix)[^\)\]]*[\)\]]/gi, '')
-    .replace(/[\(\)\[\]\{\}\-–—_\/\\\"\'ᐸ><,.:;!?]/g, ' ')
+    .replace(/\s*[\(\[][^\)\]]*(?:official|audio|video|lyrics|ÐºÐ»Ð¸Ð¿|Ñ‚Ñ€ÐµÐº|prod|feat|ft|slowed|reverb|remix)[^\)\]]*[\)\]]/gi, '')
+    .replace(/[\(\)\[\]\{\}\-â€“â€”_\/\\\"\'á¸><,.:;!?]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function fetchDeezerExplicitTitles(query) {
   return new Promise((resolve) => {
-    const cleanQ = (query || '').replace(/\s*(official|audio|video|lyrics|клип|трек|slowed|reverb)\b/gi, '').trim();
+    const cleanQ = (query || '').replace(/\s*(official|audio|video|lyrics|ÐºÐ»Ð¸Ð¿|Ñ‚Ñ€ÐµÐº|slowed|reverb)\b/gi, '').trim();
     if (!cleanQ) return resolve([]);
     const url = `https://api.deezer.com/search?q=${encodeURIComponent(cleanQ)}&limit=50`;
     https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (res) => {
@@ -2783,80 +2812,31 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const resolveYtCandidateStream = async (candId) => {
       const vid = extractYtIdFromAny(candId);
       if (!vid) return null;
-      let s = null;
-      if (!forceYtDlp) {
-        try { s = await fetchDirectYoutubeStreamServer(vid, quality); } catch (_) {}
-        if (s) return s;
-      }
-      const vUrl = `https://www.youtube.com/watch?v=${vid}`;
-      const hasCookies = hasYtLoginCookies();
-      // web_embedded yields WEB_EMBEDDED_PLAYER URLs that work with a plain
-      // YouTube Origin header. Try it cookie-free first: it is the fastest and
-      // most reliable path, and cookies can trigger "unavailable (152-18)".
-      const attempts = [];
-      attempts.push({ clientSpec: 'web_embedded,web,tv', cookies: false });
-      if (hasCookies) attempts.push({ clientSpec: 'web_embedded,web,tv', cookies: true });
-      attempts.push({ clientSpec: 'ios', cookies: false });
-      if (hasCookies) attempts.push({ clientSpec: 'default', cookies: true });
-      let lastAttemptError = '';
-      let stopAttempts = false;
-      for (const attempt of attempts) {
-        if (s || stopAttempts) break;
-        // Rapid track skipping makes YouTube intermittently answer with
-        // "Requested format is not available" / "The page needs to be
-        // reloaded." even for otherwise playable videos. Retry once.
-        for (let tryNo = 0; tryNo < 2 && !s && !stopAttempts; tryNo++) {
-          let retryable = false;
-          try {
-            const args = [
-              '--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates',
-              '--js-runtimes', 'node', '--remote-components', 'ejs:github',
-              '--socket-timeout', '6', '--retries', '1',
-              '--extractor-args', 'youtube:player_client=' + attempt.clientSpec,
-              '-f', (forShare ? audioFormat : ytDlpQualityFormat),
-              '--', vUrl
-            ];
-            const raw = await runYtDlp(args, 18000, { noCookies: !attempt.cookies, quiet: true });
-            const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-            for (const lineUrl of lines) {
-              let verified = false;
-              // googlevideo 403s are often transient right after extraction
-              // (edge propagation / rate limiting), so check a few times.
-              for (let check = 0; check < 3 && !verified; check++) {
-                verified = await verifyStreamPlayable(lineUrl);
-                if (!verified) await new Promise((r) => setTimeout(r, 500 + check * 500));
-              }
-              // If yt-dlp produced a googlevideo URL, prefer trying it over
-              // skipping the track; the media element can still recover.
-              if (!verified && /googlevideo\.com/i.test(lineUrl)) verified = true;
-              if (verified) {
-                s = lineUrl;
-                break;
-              }
-            }
-          } catch (err) {
-            const msg = String((err && err.message) || err || '');
-            lastAttemptError = msg;
-            if (/confirm your age|not a bot|Sign in to confirm|age-restricted|LOGIN_REQUIRED/i.test(msg)) {
-              needYtAuth = true;
-              // Still try the cookie attempt before giving up on login-gated videos.
-              if (!hasCookies || attempt.cookies) stopAttempts = true;
-              break;
-            }
-            if (/Video unavailable|This video is not available|Private video/i.test(msg)) {
-              stopAttempts = true;
-              break;
-            }
-            retryable = /format is not available|page needs to be reloaded|429|too many requests|temporar/i.test(msg);
+
+      // Try verified yt-dlp URLs first: direct YouTube client URLs can resolve
+      // quickly but still respond 403 when the player requests audio.
+      for (const { client, useCookies } of youtubeAudioAttempts(canUseYoutubeCookieJar())) {
+        try {
+          const stream = await resolveVerifiedYoutubeAudio(vid,
+            forShare ? audioFormat : ytDlpQualityFormat, client, runYtDlp, verifyStreamPlayable, useCookies);
+          if (stream) return stream;
+        } catch (err) {
+          const msg = String((err && err.message) || err || '');
+          if (/confirm your age|not a bot|Sign in to confirm|age-restricted|LOGIN_REQUIRED/i.test(msg)) {
+            needYtAuth = true;
+            // An authenticated attempt may still work; do not abort early.
+            continue;
           }
-          if (!retryable || tryNo === 1) break;
-          await new Promise((r) => setTimeout(r, 900));
+          if (/Video unavailable|This video is not available|Private video/i.test(msg)) break;
         }
       }
-      if (!s) {
-        try { logger.log('warn', `No stream for ${vid}: ${String(lastAttemptError || 'all attempts failed').slice(0, 200)}`); } catch (_) {}
+      if (!forceYtDlp) {
+        try {
+          const direct = await fetchDirectYoutubeStreamServer(vid, quality);
+          if (direct && await verifyStreamPlayable(direct)) return direct;
+        } catch (_) {}
       }
-      return s;
+      return null;
     };
 
     const resolveScCandidateStream = async (candUrl, candId) => {
@@ -3082,9 +3062,9 @@ async function fetchMusicBio(artistName) {
   } catch (_) {}
 
   const cleanLower = clean.toLowerCase();
-  const isRu = /[а-яё]/i.test(clean) || clean.toUpperCase() === 'FACE';
+  const isRu = /[Ð°-ÑÑ‘]/i.test(clean) || clean.toUpperCase() === 'FACE';
   const wikiHost = isRu ? 'ru.wikipedia.org' : 'en.wikipedia.org';
-  const queryTerm = isRu ? `${clean} (рэпер OR музыкант OR певец OR группа)` : `${clean} (musician OR rapper OR singer OR band OR music)`;
+  const queryTerm = isRu ? `${clean} (Ñ€ÑÐ¿ÐµÑ€ OR Ð¼ÑƒÐ·Ñ‹ÐºÐ°Ð½Ñ‚ OR Ð¿ÐµÐ²ÐµÑ† OR Ð³Ñ€ÑƒÐ¿Ð¿Ð°)` : `${clean} (musician OR rapper OR singer OR band OR music)`;
 
   try {
     const searchUrl = `https://${wikiHost}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryTerm)}&utf8=&format=json`;
@@ -4739,7 +4719,7 @@ function parseYrc(yrcText) {
     const words = parseYrcWords(rest);
     if (words.length > 0) {
       const fullText = words.map(w => w.text).join(' ').trim();
-      if (fullText && !fullText.startsWith('作词') && !fullText.startsWith('作曲') && !fullText.startsWith('制作人')) {
+      if (fullText && !fullText.startsWith('ä½œè¯') && !fullText.startsWith('ä½œæ›²') && !fullText.startsWith('åˆ¶ä½œäºº')) {
         lines.push({
           start: lineStart,
           end: lineEnd,
@@ -5176,7 +5156,7 @@ function getFetchedLyricsPath(title, artist, source = 'lrclib') {
 
 function isLyricsExplicit(lyrics) {
   if (!lyrics || typeof lyrics !== 'string') return false;
-  return /\b(fuck|fucking|fucked|fucker|fucks|shit|bitch|bitches|bitching|asshole|cunt|nigger|nigga|dick|pussy)\b|ху[йеяёюи]|пизд|залуп|муда[кч]|мудил|г[ао]ндон|дерьм|дроч|(?:^|[^а-яё])(?:бля[а-яё]*|сук[аиуео]|суч[екьяа][а-яё]*)|(?:^|[^а-яё])(?:[её]б[а-яё]+|[её]б\b|(?:вы|за|на|до|по|пере|про|разъ|раз|съ|въ|под|от|у)[её]б[а-яё]*)/i.test(lyrics);
+  return /\b(fuck|fucking|fucked|fucker|fucks|shit|bitch|bitches|bitching|asshole|cunt|nigger|nigga|dick|pussy)\b|Ñ…Ñƒ[Ð¹ÐµÑÑ‘ÑŽÐ¸]|Ð¿Ð¸Ð·Ð´|Ð·Ð°Ð»ÑƒÐ¿|Ð¼ÑƒÐ´Ð°[ÐºÑ‡]|Ð¼ÑƒÐ´Ð¸Ð»|Ð³[Ð°Ð¾]Ð½Ð´Ð¾Ð½|Ð´ÐµÑ€ÑŒÐ¼|Ð´Ñ€Ð¾Ñ‡|(?:^|[^Ð°-ÑÑ‘])(?:Ð±Ð»Ñ[Ð°-ÑÑ‘]*|ÑÑƒÐº[Ð°Ð¸ÑƒÐµÐ¾]|ÑÑƒÑ‡[ÐµÐºÑŒÑÐ°][Ð°-ÑÑ‘]*)|(?:^|[^Ð°-ÑÑ‘])(?:[ÐµÑ‘]Ð±[Ð°-ÑÑ‘]+|[ÐµÑ‘]Ð±\b|(?:Ð²Ñ‹|Ð·Ð°|Ð½Ð°|Ð´Ð¾|Ð¿Ð¾|Ð¿ÐµÑ€Ðµ|Ð¿Ñ€Ð¾|Ñ€Ð°Ð·ÑŠ|Ñ€Ð°Ð·|ÑÑŠ|Ð²ÑŠ|Ð¿Ð¾Ð´|Ð¾Ñ‚|Ñƒ)[ÐµÑ‘]Ð±[Ð°-ÑÑ‘]*)/i.test(lyrics);
 }
 
 async function handleLyrics(req, res, title, artist, allowOnline = true, source = 'lrclib', duration = 0) {
@@ -6107,10 +6087,10 @@ function parseSmartArtistAndTitle(rawTitle, rawArtist) {
   let artist = String(rawArtist || '').replace(/\s*-\s*Topic$/i, '').replace(/\bVEVO$/i, '').trim();
 
   title = title
-    .replace(/\s*[\(\[]\s*(?:official\s*(?:music\s*)?(?:video|audio|lyric\s*video|visualizer)|lyrics?\s*video|lyrics?|visualizer|hd|hq|4k|remastered\s*\d*|mv|clip\s*officiel|официальный\s*клип|премьера\s*клипа|премьера\s*трека)\s*[\)\]]/gi, '')
+    .replace(/\s*[\(\[]\s*(?:official\s*(?:music\s*)?(?:video|audio|lyric\s*video|visualizer)|lyrics?\s*video|lyrics?|visualizer|hd|hq|4k|remastered\s*\d*|mv|clip\s*officiel|Ð¾Ñ„Ð¸Ñ†Ð¸Ð°Ð»ÑŒÐ½Ñ‹Ð¹\s*ÐºÐ»Ð¸Ð¿|Ð¿Ñ€ÐµÐ¼ÑŒÐµÑ€Ð°\s*ÐºÐ»Ð¸Ð¿Ð°|Ð¿Ñ€ÐµÐ¼ÑŒÐµÑ€Ð°\s*Ñ‚Ñ€ÐµÐºÐ°)\s*[\)\]]/gi, '')
     .trim();
 
-  const sepMatch = title.match(/^(.+?)\s+(?:[-–—]|\/\/)\s+(.+)$/);
+  const sepMatch = title.match(/^(.+?)\s+(?:[-â€“â€”]|\/\/)\s+(.+)$/);
   if (sepMatch) {
     const left = sepMatch[1].trim();
     const right = sepMatch[2].trim();
@@ -8489,7 +8469,7 @@ function stopServer() {
   });
 }
 
-module.exports = { startServer, stopServer, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc, cleanSearchResults, scoreImportedCandidate, findDownloadedFileName, decodeUtf8Chunks, hasBrokenLyricText };
+module.exports = { startServer, stopServer, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc, cleanSearchResults, scoreImportedCandidate, findDownloadedFileName, decodeUtf8Chunks, hasBrokenLyricText, getTrackNormalizedKey, makeCleanSearchQuery, resolveVerifiedYoutubeAudio };
 
 if (require.main === module) {
   startServer();
