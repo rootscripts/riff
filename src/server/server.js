@@ -495,11 +495,11 @@ function getTrackNormalizedKey(artist, title) {
   let a = String(artist || '').toLowerCase();
   let t = String(title || '').toLowerCase();
   t = t.replace(/\s*\([^)]*official[^)]*\)/gi, '')
-       .replace(/\s*\[[^\]]*\]/gi, '')
+       .replace(/\s*\[(?:official\s*(?:video|audio)|lyrics?(?:\s*video)?|visualizer|hd|hq|4k|remaster(?:ed)?)\s*\]/gi, '')
        .replace(/\s*\([^)]*(video|audio|remaster(ed)?|lyrics?|visualizer)[^)]*\)/gi, '');
-  t = t.replace(/\s*(feat\.?|ft\.?)\s+[^(\[-]+/gi, '')
+  t = t.replace(/\s+(?:feat\.?|ft\.?)\s+[^(\[-]+/gi, '')
        .replace(/\s*\((feat\.?|ft\.?)[^)]*\)/gi, '');
-  a = a.replace(/\s*(feat\.?|ft\.?)\s+.*$/gi, '');
+  a = a.replace(/\s+(?:feat\.?|ft\.?)\s+.*$/gi, '');
   a = a.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   t = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   return `${a}::${t}`;
@@ -569,7 +569,8 @@ function cleanSearchResults(tracks, query) {
       (item.relevance >= minimumRelevance &&
         (queryTokens.length < 2 ||
           (item.titleRelevance > 0 && item.artistRelevance > 0) ||
-          item.titleRelevance === queryTokens.length ||
+          // Long song-title queries need not also name the uploader.
+          item.titleRelevance >= Math.max(2, Math.ceil(queryTokens.length * 0.7)) ||
           item.artistRelevance === queryTokens.length))))
     .sort((a, b) => b.relevance - a.relevance || a.index - b.index)
     .filter(({ track, clean }) => {
@@ -2536,7 +2537,7 @@ function scoreImportedCandidate(targetTitle, targetArtist, targetDur, cand) {
 
   const tTitle = norm(targetTitle);
   const cTitle = norm(cand.title);
-  const tArtist = norm(targetArtist.split(/[,;&\/]|feat\.?|ft\.?/i)[0] || targetArtist);
+  const tArtist = norm(targetArtist.split(/[,;&\/]|\s+(?:feat\.?|ft\.?)\s+/i)[0] || targetArtist);
   const cArtist = norm(cand.artist);
   const cFull = `${cArtist} ${cTitle}`;
 
@@ -2565,12 +2566,20 @@ function scoreImportedCandidate(targetTitle, targetArtist, targetDur, cand) {
     }
   }
 
-  const modifiers = ['slowed', 'reverb', 'sped up', 'speed up', 'nightcore', 'hardstyle', 'remix', 'bootleg', 'mashup', '8d', 'karaoke', 'instrumental', 'cover', 'live', 'tribute', 'bass boosted', 'phonk remix', 'edit'];
-  for (const mod of modifiers) {
-    const inTarget = tTitle.includes(mod) || norm(targetArtist).includes(mod);
-    const inCand = cFull.includes(mod);
-    if (inCand && !inTarget) score -= 95;
-    else if (inCand && inTarget) score += 22;
+  // A slower/nightcore/hardstyle edit is a different recording from the original.
+  // Do not substitute the original merely because its title and duration match.
+  const modifiers = [
+    /\bslowed(?:\s+down)?\b/, /\breverb\b/, /\b(?:sped\s+up|speed\s+up)\b/,
+    /\bnightcore\b/, /\bhardstyle\b/, /\bremix\b/, /\bbootleg\b/,
+    /\bmashup\b/, /\b8d\b/, /\bkaraoke\b/, /\binstrumental\b/,
+    /\bcover\b/, /\bbass\s+boosted\b/, /\bphonk\b/
+  ];
+  for (const marker of modifiers) {
+    const requested = marker.test(tTitle);
+    const offered = marker.test(cFull);
+    if (requested && !offered) return -500;
+    if (!requested && offered) score -= 95;
+    if (requested && offered) score += 22;
   }
 
   const tDur = Number(targetDur) || 0;
@@ -2591,7 +2600,7 @@ function makeCleanSearchQuery(artist, title) {
   const cleanA = String(artist || '')
     .replace(/\s*-\s*Topic$/i, '')
     .replace(/\bVEVO$/i, '')
-    .split(/[,;&\/]|feat\.?|ft\.?/i)[0]
+    .split(/[,;&\/]|\s+(?:feat\.?|ft\.?)\s+/i)[0]
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -8489,8 +8498,7 @@ function stopServer() {
   });
 }
 
-module.exports = { startServer, stopServer, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc, cleanSearchResults, scoreImportedCandidate, findDownloadedFileName, decodeUtf8Chunks, hasBrokenLyricText };
-
+module.exports = { startServer, stopServer, PORT, getServerToken, fetchLyricsDirect, fetchLrcLib, fetchGeniusLyrics, fetchNetEaseWords, fetchKugouLyrics, fetchMusixmatchLyrics, fetchNeteaseLyrics, fetchSoundCloudSearch, ytmusicSearch, parseYrc, cleanSearchResults, getTrackNormalizedKey, scoreImportedCandidate, makeCleanSearchQuery, findDownloadedFileName, decodeUtf8Chunks, hasBrokenLyricText };
 if (require.main === module) {
   startServer();
 }
