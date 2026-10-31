@@ -214,6 +214,14 @@ try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
   }
 })();
 
+function closeSbInlinePresets() {
+  const sheet = document.getElementById('sb-inline-presets-sheet');
+  if (sheet) sheet.classList.remove('open');
+  const btn = document.getElementById('btn-sb-presets');
+  if (btn) btn.classList.remove('active');
+}
+window.closeSbInlinePresets = closeSbInlinePresets;
+
 function stripYoutubeTopic(artist) {
   if (!artist || typeof artist !== 'string') return artist || '';
   return artist.endsWith(' - Topic') ? artist.slice(0, -8).trim() : artist;
@@ -247,6 +255,7 @@ const HomeCache = {
 window.HomeCache = HomeCache;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  var activeStreamRecovery = null;
   var state = { vibeTracks: [] };
   var myWaveCurrentTracks = [];
   var maybeShowYtAuthSheet = async function() {};
@@ -284,6 +293,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
+  function cleanTrackId(id) {
+    return String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+  window.cleanTrackId = cleanTrackId;
+  window.CleanTrackId = cleanTrackId;
+
+  function closeSbInlinePresets() {
+    const sheet = document.getElementById('sb-inline-presets-sheet');
+    if (sheet) sheet.classList.remove('open');
+    const btn = document.getElementById('btn-sb-presets');
+    if (btn) btn.classList.remove('active');
+  }
+  window.closeSbInlinePresets = closeSbInlinePresets;
 
   const LiquidMotion = {
     setAnchor(element, triggerEl, axis = 'x') {
@@ -340,14 +363,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const formulas = {
       'm3-cookie-4': (a) => 40 + 6 * Math.cos(4 * a),
-                          'm3-diamond-puffy': (a) => 36 + 10 * Math.cos(4 * a),
-                          'm3-flower': (a) => 28 + 18 * Math.abs(Math.cos(4 * a)),
-                          'm3-poly-6': (a) => {
-                            let t = a % (2 * Math.PI / 6);
-                            if (t < 0) t += 2 * Math.PI / 6;
-                            return 36 / Math.cos(t - Math.PI / 6);
-                          },
-                          'm3-leaf-4': (a) => 40 + 6 * Math.cos(4 * a)
+      'm3-cookie-8': (a) => 42 + 4 * Math.cos(8 * a),
+      'm3-diamond-puffy': (a) => 36 + 10 * Math.cos(4 * a),
+      'm3-flower': (a) => 28 + 18 * Math.abs(Math.cos(4 * a)),
+      'm3-poly-6': (a) => {
+        let t = a % (2 * Math.PI / 6);
+        if (t < 0) t += 2 * Math.PI / 6;
+        return 36 / Math.cos(t - Math.PI / 6);
+      },
+      'm3-leaf-4': (a) => 40 + 6 * Math.cos(4 * a)
     };
 
     let html = '';
@@ -2291,7 +2315,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const UI_TRANSLATION_LANGUAGE_CODES = new Set(UI_TRANSLATION_LANGUAGES.map(language => language.code));
 
   function getSupportedUiLanguage(language) {
-    return UI_TRANSLATION_LANGUAGE_CODES.has(language) ? language : 'en';
+    if (!language) return 'en';
+    const code = String(language).trim();
+    return TRANSLATION_LANGUAGES.some(l => l.code === code) ? code : 'en';
   }
 
   function syncDocumentDirection(langCode) {
@@ -4389,6 +4415,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function cleanTrackId(id) {
+    return String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+  window.cleanTrackId = cleanTrackId;
+  window.CleanTrackId = cleanTrackId;
+
+  function closeSbInlinePresets() {
+    const sheet = document.getElementById('sb-inline-presets-sheet');
+    if (sheet) sheet.classList.remove('open');
+    const btn = document.getElementById('btn-sb-presets');
+    if (btn) btn.classList.remove('active');
+  }
+  window.closeSbInlinePresets = closeSbInlinePresets;
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (track && !track._errorRetryStage) track._errorRetryStage = 0;
     if (track && track.artist) track.artist = stripYoutubeTopic(track.artist);
@@ -4445,11 +4485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAudioContext();
     el.nativeAudio.preload = 'auto';
 
-    try {
-      el.nativeAudio.pause();
-      el.nativeAudio.removeAttribute('src');
-      el.nativeAudio.load();
-    } catch (e) {}
+    try { if (el.nativeAudio && !el.nativeAudio.paused) el.nativeAudio.pause(); } catch (_) {}
 
     if (hlsInstance) {
       try { hlsInstance.destroy(); } catch (e) {}
@@ -4555,6 +4591,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSyncedLyrics(track.title, track.artist, currentToken);
 
     try {
+      if (track.isCached && track.id) {
+        const clean = cleanTrackId(track.id);
+        const localStreamUrl = `http://127.0.0.1:${state.serverPort}/api/local-track?id=${encodeURIComponent(clean)}`;
+        if (currentToken !== state.loadToken) return;
+        el.nativeAudio.src = localStreamUrl;
+        playSmooth();
+        applyAudioSettings();
+        return;
+      }
+
+      if (track.platform === 'local') {
+        const streamUrl = track.url || (track.path ? (track.path.startsWith('file:') ? track.path : 'file://' + encodeURI(track.path)) : `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`);
+        if (currentToken !== state.loadToken) return;
+        el.nativeAudio.src = streamUrl;
+        playSmooth();
+        applyAudioSettings();
+        return;
+      }
+
       if (track._preloadedStreamUrl && !(track._errorRetryStage > 0)) {
         if (currentToken !== state.loadToken) return;
         if (hlsInstance) {
@@ -4562,6 +4617,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           hlsInstance = null;
         }
         el.nativeAudio.preload = 'auto';
+        const onNativeAudioErrorOnce = () => {
+          state.isLoadingTrack = false;
+          state.isPlaying = false;
+          updatePlayPauseButton(false, false);
+          if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+        };
+        el.nativeAudio.addEventListener('error', onNativeAudioErrorOnce, { once: true });
         if (track._preloadedStreamUrl.includes('.m3u8') && window.Hls && Hls.isSupported()) {
           hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
           hlsInstance.on(Hls.Events.ERROR, (_, errData) => {
@@ -4582,16 +4644,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           el.nativeAudio.src = track._preloadedStreamUrl;
           playSmooth();
         }
-        applyAudioSettings();
-        return;
-      }
-
-      if (track.platform === 'local') {
-        const streamUrl = track.url || (track.path ? (track.path.startsWith('file:') ? track.path : 'file://' + encodeURI(track.path)) : `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`);
-        if (currentToken !== state.loadToken) return;
-        el.nativeAudio.preload = 'auto';
-        el.nativeAudio.src = streamUrl;
-        playSmooth();
         applyAudioSettings();
         return;
       }
@@ -4633,6 +4685,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       el.nativeAudio.preload = 'auto';
+
+      const onNativeAudioErrorOnce = () => {
+        state.isLoadingTrack = false;
+        state.isPlaying = false;
+        updatePlayPauseButton(false, false);
+        if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+      };
+      el.nativeAudio.addEventListener('error', onNativeAudioErrorOnce, { once: true });
 
       if (data.isHls && window.Hls && Hls.isSupported()) {
         hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
@@ -5915,7 +5975,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const stored = JSON.parse(localStorage.getItem('riff_i18n_' + lang) || '{}');
       for (const [k, v] of Object.entries(stored)) {
-        if (v && typeof v === 'string' && !/https?:\/\/|linux\.do/i.test(v) && !dict.has(k)) {
+        if (v && typeof v === 'string' && (lang === 'en' || v !== k) && !/https?:\/\/|linux\.do/i.test(v) && !dict.has(k)) {
           dict.set(k, v);
         }
       }
@@ -8038,9 +8098,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const errName = (e && e.name) ? e.name : '';
             const errMsg = (e && e.message) ? e.message : '';
             if (errName === 'AbortError') return;
-            if (errName === 'NotSupportedError' || /no supported source|failed to load|interrupted by a new load/i.test(errMsg)) {
-              state.isLoadingTrack = true;
-              if (typeof recoverCurrentStream === 'function') {
+            if (errName === 'NotSupportedError' || /no supported source|failed to load/i.test(errMsg)) {
+              if (!activeStreamRecovery) {
                 recoverCurrentStream((el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0);
               }
               return;
@@ -8405,7 +8464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    let activeStreamRecovery = null;
+    activeStreamRecovery = null;
     function recoverCurrentStream(resumePos = 0) {
       const token = state.loadToken;
       if (activeStreamRecovery && activeStreamRecovery.token === token) return activeStreamRecovery.promise;
@@ -8415,6 +8474,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeStreamRecovery = { token, promise };
       return promise;
     }
+
+    let lastStreamErrorToastTime = 0;
 
     async function recoverCurrentStreamOnce(resumePos, myToken) {
       if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
@@ -8428,67 +8489,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast('File missing from library', 'error');
         return;
       }
-      delete cur._preloadedStreamUrl;
-      const retryStage = cur._errorRetryStage || 0;
 
-      if (retryStage <= 1) {
-        cur._errorRetryStage = retryStage + 1;
-        state.isLoadingTrack = true;
-        const retryController = new AbortController();
-        const retryTimeout = setTimeout(() => retryController.abort(), 22000);
+      cur._retryCount = (cur._retryCount || 0) + 1;
+      if (cur._retryCount > 2) {
+        cur._retryCount = 0;
+        state.isLoadingTrack = false;
+        state.isPlaying = false;
+        updatePlayPauseButton(false, false);
         try {
-          const qQuality = encodeURIComponent(localStorage.getItem('riff_audio_quality') || 'medium');
-          const qSearch = encodeURIComponent(cur.searchQuery || ((cur.artist ? cur.artist + ' - ' : '') + (cur.title || '')));
-          const retryUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(cur.url || '')}&id=${encodeURIComponent(cur.id || '')}&platform=${encodeURIComponent(cur.platform || state.platform)}&title=${encodeURIComponent(cur.title || '')}&artist=${encodeURIComponent(cur.artist || '')}&duration=${encodeURIComponent(cur.duration || 0)}&quality=${qQuality}&q=${qSearch}&forceYtDlp=1`;
-          const r = await fetch(retryUrl, { signal: retryController.signal });
-          const d = await r.json();
-          if (myToken !== state.loadToken) return;
-          if (d && d.success && d.streamUrl) {
-            cur._preloadedStreamUrl = d.streamUrl;
-            if (hlsInstance) {
-              try { hlsInstance.destroy(); } catch (_) {}
-              hlsInstance = null;
-            }
-            if ((d.isHls || d.streamUrl.includes('.m3u8')) && window.Hls && Hls.isSupported()) {
-              hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true });
-              hlsInstance.loadSource(d.streamUrl);
-              hlsInstance.attachMedia(el.nativeAudio);
-              hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-                if (myToken === state.loadToken) {
-                  if (resumePos > 1) {
-                    try { el.nativeAudio.currentTime = resumePos; } catch (_) {}
-                  }
-                  playSmooth();
-                }
-              });
-            } else {
-              try { el.nativeAudio.pause(); el.nativeAudio.removeAttribute('src'); el.nativeAudio.load(); } catch (_) {}
-              el.nativeAudio.src = d.streamUrl;
-              if (resumePos > 1) {
-                el.nativeAudio.addEventListener('loadedmetadata', () => {
-                  try { el.nativeAudio.currentTime = resumePos; } catch (_) {}
-                }, { once: true });
-              }
-              playSmooth();
-            }
-            return;
+          if (el.nativeAudio) {
+            el.nativeAudio.pause();
+            el.nativeAudio.removeAttribute('src');
           }
-        } catch (_) {
-        } finally {
-          clearTimeout(retryTimeout);
+        } catch (_) {}
+        const now = Date.now();
+        if (now - lastStreamErrorToastTime > 5000) {
+          lastStreamErrorToastTime = now;
+          showToast('Could not load audio stream', 'error');
         }
-      }
-
-      cur._errorRetryStage = 0;
-      state.isLoadingTrack = false;
-      if (state.isRepeat && el.nativeAudio) {
-        el.nativeAudio.currentTime = 0;
-        playTrack(cur, state.queue, state.queueIndex);
         return;
       }
+
+      delete cur._preloadedStreamUrl;
+      state.isLoadingTrack = true;
+
+      try {
+        const qQuality = encodeURIComponent(localStorage.getItem('riff_audio_quality') || 'medium');
+        const qSearch = encodeURIComponent(cur.searchQuery || ((cur.artist ? cur.artist + ' - ' : '') + (cur.title || '')));
+        const retryUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(cur.url || '')}&id=${encodeURIComponent(cur.id || '')}&platform=${encodeURIComponent(cur.platform || state.platform)}&title=${encodeURIComponent(cur.title || '')}&artist=${encodeURIComponent(cur.artist || '')}&duration=${encodeURIComponent(cur.duration || 0)}&quality=${qQuality}&q=${qSearch}&forceYtDlp=1`;
+        const r = await fetch(retryUrl);
+        const d = await r.json();
+        if (myToken !== state.loadToken) return;
+        if (d && d.success && d.streamUrl) {
+          cur._preloadedStreamUrl = d.streamUrl;
+          cur._retryCount = 0;
+          if (hlsInstance) {
+            try { hlsInstance.destroy(); } catch (_) {}
+            hlsInstance = null;
+          }
+          try { el.nativeAudio.pause(); } catch (_) {}
+          el.nativeAudio.src = d.streamUrl;
+          playSmooth();
+          return;
+        }
+      } catch (_) {}
+
+      cur._retryCount = 0;
+      state.isLoadingTrack = false;
       state.isPlaying = false;
       updatePlayPauseButton(false, false);
-      showToast('Could not load audio stream', 'error');
+      try {
+        if (el.nativeAudio) {
+          el.nativeAudio.pause();
+          el.nativeAudio.removeAttribute('src');
+        }
+      } catch (_) {}
+      const now = Date.now();
+      if (now - lastStreamErrorToastTime > 5000) {
+        lastStreamErrorToastTime = now;
+        showToast('Could not load audio stream', 'error');
+      }
     }
 
     let playbackStallTimer = null;
@@ -9855,7 +9915,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     container.innerHTML = `
       <div class="m3-search-loader-wrap">
         <div class="m3-search-shape-stage">
-          <svg class="m3-search-loader" width="${size}" height="${size}" viewBox="-180 -180 360 360">
+          <svg class="m3-search-loader m3-btn-shape-spinner" width="${size}" height="${size}" viewBox="-180 -180 360 360">
             <path />
           </svg>
           <div class="m3-search-error-icon">
@@ -9866,104 +9926,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     `;
     const stage = container.querySelector('.m3-search-shape-stage');
-    const svg = container.querySelector('.m3-search-loader');
-    const path = svg ? svg.querySelector('path') : null;
-    if (!svg || !path) return;
-    const S = window.RiffShapes;
-    if (!S || !S.ready()) return;
-
-    const STEP_MS = 1150;
-    const STEP_ANGLE = Math.PI / 3;
-    let fromIdx = 0;
-    let toIdx = S.next(0);
-    let stepStart = performance.now();
-    let baseAngle = 0;
-    let currentAngle = 0;
-    let lastVel = STEP_ANGLE / STEP_MS;
-    const K = S.K;
-
     const stateObj = {
       stopping: false,
       stopStart: 0,
-      stopStartAngle: 0,
-      stopExtraAngle: 0,
       stopped: false
     };
     container._m3LoaderState = stateObj;
-
-    function frame(now) {
-      if (!svg.isConnected || stateObj.stopped) return;
-      let eMorph = 0;
-
-      if (!stateObj.stopping) {
-        if (now - stepStart >= STEP_MS) {
-          fromIdx = toIdx;
-          toIdx = S.next(fromIdx);
-          baseAngle = (baseAngle + STEP_ANGLE) % (Math.PI * 2);
-          stepStart = now;
-        }
-        const rawT = Math.min(1, (now - stepStart) / STEP_MS);
-        const eased = easeInOutCubicFn(rawT);
-        eMorph = eased;
-        const prevAngle = currentAngle;
-        currentAngle = baseAngle + eased * STEP_ANGLE;
-        lastVel = Math.max(0.0003, Math.abs(currentAngle - prevAngle) / 16);
-      } else {
-        const STOP_DUR = 950;
-        const p = Math.min(1, (now - stateObj.stopStart) / STOP_DUR);
-        const decel = 1 - Math.pow(1 - p, 3);
-        currentAngle = stateObj.stopStartAngle + stateObj.stopExtraAngle * decel;
-        eMorph = easeInOutCubicFn(Math.min(1, (stateObj.stopStart - stepStart) / STEP_MS));
-        if (p >= 1) {
-          stateObj.stopped = true;
-        }
-      }
-
-      const a = S.profile(fromIdx);
-      const b = S.profile(toIdx);
-      let d = '';
-      for (let k = 0; k < K; k += 3) {
-        const th = -Math.PI + (Math.PI * 2 * k) / K + currentAngle;
-        const r = a[k] + (b[k] - a[k]) * eMorph;
-        d += `${k === 0 ? 'M' : 'L'}${(Math.cos(th) * r).toFixed(1)},${(Math.sin(th) * r).toFixed(1)}`;
-      }
-      path.setAttribute('d', d + 'Z');
-      if (!stateObj.stopped) requestAnimationFrame(frame);
-    }
 
     stateObj.triggerGearStop = () => {
       if (stateObj.stopping) return;
       stateObj.stopping = true;
       stateObj.stopStart = performance.now();
-      stateObj.stopStartAngle = currentAngle;
-      stateObj.stopExtraAngle = Math.max(0.38, Math.min(1.1, lastVel * 420));
       if (stage) stage.classList.add('is-error');
     };
-
-    requestAnimationFrame(frame);
   }
 
   function startButtonShapeSpinners() {
     const S = window.RiffShapes;
     if (!S || !S.ready()) return;
     let fromIdx = 0;
-    let toIdx = S.next(0);
+    let toIdx = S.nextSpinner ? S.nextSpinner(0) : S.next(0);
     let stepStart = performance.now();
-    const STEP_MS = 1000;
+    const STEP_MS = 1200;
     const K = S.K;
-
     function tick(now) {
       const spinners = document.querySelectorAll('.m3-btn-shape-spinner:not(.hidden)');
       if (spinners.length > 0) {
         if (now - stepStart >= STEP_MS) {
           fromIdx = toIdx;
-          toIdx = S.next(fromIdx);
+          toIdx = S.nextSpinner ? S.nextSpinner(fromIdx) : S.next(fromIdx);
           stepStart = now;
         }
         const e = S.ease(Math.min(1, (now - stepStart) / STEP_MS));
-        const a = S.profile(fromIdx);
-        const b = S.profile(toIdx);
-        const rot = ((now % 2400) / 2400) * Math.PI * 2;
+        const a = S.spinnerProfile ? S.spinnerProfile(fromIdx) : S.profile(fromIdx);
+        const b = S.spinnerProfile ? S.spinnerProfile(toIdx) : S.profile(toIdx);
+        const rot = ((now % 3000) / 3000) * Math.PI * 2;
         let d = '';
         for (let k = 0; k < K; k += 4) {
           const th = -Math.PI + (Math.PI * 2 * k) / K + rot;
@@ -9976,7 +9973,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (p) p.setAttribute('d', d);
         });
       }
-      if (spinners.length > 0) requestAnimationFrame(tick); else setTimeout(() => requestAnimationFrame(tick), 500);
+      requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
@@ -11203,7 +11200,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const explicitTag = isTrackExplicit(track) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
 
       row.innerHTML = `
-      <div class="track-row-num"><span class="track-num-text">${index + 1}</span><span class="tg-select-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span></div>
+      <div class="track-row-num">
+        <span class="track-num-text">${index + 1}</span>
+        <div class="sp-playing-bars" aria-hidden="true">
+          <span class="bar b1"></span>
+          <span class="bar b2"></span>
+          <span class="bar b3"></span>
+          <span class="bar b4"></span>
+        </div>
+        <span class="tg-select-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
+      </div>
       ${!isAlbum ? `
       <div class="track-row-thumb-wrap">
         <svg class="track-row-fallback-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
@@ -11534,14 +11540,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function formatCount(num) {
     if (!num || isNaN(num) || num <= 0) return '';
-    if (num >= 1000000) {
-      const v = (num / 1000000).toFixed(2);
-      return (v.endsWith('.00') ? v.slice(0, -3) : v.endsWith('0') ? v.slice(0, -1) : v) + 'M';
+    const lang = localStorage.getItem('riff_ui_lang') || 'en';
+    try {
+      return new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(num);
+    } catch (e) {
+      if (num >= 1000000) {
+        const v = (num / 1000000).toFixed(1);
+        return (v.endsWith('.0') ? v.slice(0, -2) : v) + 'M';
+      }
+      if (num >= 1000) return Math.round(num / 1000) + 'K';
+      return String(num);
     }
-    if (num >= 1000) {
-      return Math.round(num / 1000) + 'K';
-    }
-    return String(num);
   }
 
 const MULTI_ARTIST_EXCEPTIONS = new Set([
@@ -11836,36 +11845,39 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
   function renderM3Loader(container, size = 52) {
     if (!container) return;
+    const dpr = window.devicePixelRatio || 1;
     container.innerHTML = `
       <div class="m3-loader-container" style="display:flex;justify-content:center;align-items:center;padding:48px 0;width:100%;">
-        <svg class="m3-search-loader" width="${size}" height="${size}" viewBox="-180 -180 360 360">
-          <path fill="var(--md-sys-color-primary)"/>
-        </svg>
+        <canvas class="m3-spinner-canvas" width="${size * dpr}" height="${size * dpr}" style="width:${size}px;height:${size}px;"></canvas>
       </div>
     `;
-    const svg = container.querySelector('.m3-search-loader');
-    const path = svg ? svg.querySelector('path') : null;
-    if (!svg || !path) return;
-    const S = window.RiffShapes;
-    if (!S || !S.ready()) {
+    const canvas = container.querySelector('.m3-spinner-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const shapes = window.RiffSpinnerShapes;
+    if (!shapes || !shapes.list || shapes.list.length === 0) {
       container.innerHTML = `<div class="m3-loader-container" style="display:flex;justify-content:center;align-items:center;padding:48px 0;width:100%;"><svg class="g-spinner" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg></div>`;
       return;
     }
-    let fromIdx = 0, toIdx = S.next(0), start = performance.now();
-    const K = S.K;
+
+    let shapeIdx = 0;
+    let stepStart = performance.now();
+    const STEP_MS = 1200;
+
     function frame(now) {
-      if (!svg.isConnected) return;
-      if (now - start >= 2000) { fromIdx = toIdx; toIdx = S.next(fromIdx); start = now; }
-      const e = S.ease(Math.min(1, (now - start) / 1200));
-      const a = S.profile(fromIdx), b = S.profile(toIdx);
-      const rot = ((now % 6000) / 6000) * Math.PI * 2;
-      let d = '';
-      for (let k = 0; k < K; k += 3) {
-        const th = -Math.PI + (Math.PI * 2 * k) / K + rot;
-        const r = a[k] + (b[k] - a[k]) * e;
-        d += `${k === 0 ? 'M' : 'L'}${(Math.cos(th) * r).toFixed(1)},${(Math.sin(th) * r).toFixed(1)}`;
+      if (!canvas.isConnected) return;
+      if (now - stepStart >= STEP_MS) {
+        shapeIdx = (shapeIdx + 1) % shapes.list.length;
+        stepStart = now;
       }
-      path.setAttribute('d', d + 'Z');
+      const rot = ((now % 4000) / 4000) * Math.PI * 2;
+      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-primary').trim() || '#a8c7fa';
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      shapes.drawShapeCentered(ctx, shapes.list[shapeIdx], cx, cy, size * dpr * 0.72, rot, primaryColor);
+
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -11884,10 +11896,8 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       document.documentElement.style.removeProperty('--artist-accent-color');
     }
 
-    const aboutCard = document.getElementById('artist-about-card');
-    const btnBioMore = document.getElementById('btn-artist-bio-more');
-    if (aboutCard) aboutCard.classList.add('hidden');
-    if (btnBioMore) btnBioMore.classList.add('hidden');
+    const btnBioModal = document.getElementById('btn-artist-bio-modal');
+    if (btnBioModal) btnBioModal.classList.add('hidden');
 
     const horizTabs = document.getElementById('artist-horiz-tabs');
     const tabTracks = document.getElementById('artist-tab-tracks');
@@ -11989,12 +11999,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       if (cached && el.artistProfileBio) {
         bioFromCache = true;
         el.artistProfileBio.textContent = cached;
-        if (aboutCard) aboutCard.classList.remove('hidden');
-        requestAnimationFrame(() => {
-          const isOverflowing = el.artistProfileBio.scrollHeight > el.artistProfileBio.clientHeight + 1;
-          el.artistProfileBio.classList.toggle('fade-end', isOverflowing);
-          if (btnBioMore) btnBioMore.classList.toggle('hidden', !isOverflowing);
-        });
+        if (btnBioModal) btnBioModal.classList.remove('hidden');
       }
     }
 
@@ -12040,17 +12045,11 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
           boundMap(artistBioCache, 20);
           if (el.artistProfileBio) {
             el.artistProfileBio.textContent = cleanBio;
-            if (aboutCard) aboutCard.classList.remove('hidden');
-            requestAnimationFrame(() => {
-              const isOverflowing = el.artistProfileBio.scrollHeight > el.artistProfileBio.clientHeight + 1;
-              el.artistProfileBio.classList.toggle('fade-end', isOverflowing);
-              if (btnBioMore) btnBioMore.classList.toggle('hidden', !isOverflowing);
-            });
+            if (btnBioModal) btnBioModal.classList.remove('hidden');
           }
         } else {
           artistBioCache.set(bioCacheKey, '');
           boundMap(artistBioCache, 20);
-          if (aboutCard) aboutCard.classList.add('hidden');
           if (el.artistProfileBio) {
             el.artistProfileBio.textContent = '';
             el.artistProfileBio.classList.remove('fade-end');
@@ -12188,7 +12187,6 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         el.artistHeroImg.style.display = 'none';
       }
       if (hero) hero.style.setProperty('--artist-accent-color', 'var(--md-sys-color-primary-container)');
-      if (aboutCard && !bioFromCache) aboutCard.classList.add('hidden');
       if (btnTracksToggle) btnTracksToggle.classList.add('hidden');
       if (el.artistProfileBio && !bioFromCache) {
         el.artistProfileBio.textContent = '';
@@ -12199,7 +12197,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     }
   }
 
-  const btnArtistBioMore = document.getElementById('btn-artist-bio-more');
+  const btnArtistBioMore = document.getElementById('btn-artist-bio-modal') || document.getElementById('btn-artist-bio-more');
   const artistBioModal = document.getElementById('artist-bio-modal');
   const btnCloseArtistBio = document.getElementById('btn-close-artist-bio');
   if (btnArtistBioMore) {
@@ -14030,36 +14028,40 @@ function updateNavIndicator(animate) {
     btn.classList.toggle('playing', !!playing);
   }
 
+  let bufferingDebounceTimer = null;
+
   function updatePlayPauseButton(isPlaying, isBuffering = false) {
     const actuallyPlaying = isPauseFading ? false : !!(isPlaying !== undefined ? isPlaying : (state.isPlaying || (el.nativeAudio && !el.nativeAudio.paused && !el.nativeAudio.ended)));
+    const btn = el.btnPlayPause;
     const tvkBtn = document.getElementById('btn-tvk-play');
-    const tvkPlayIcon = document.getElementById('tvk-play-icon');
-    const tvkPauseIcon = document.getElementById('tvk-pause-icon');
-    const tvkPlaySpinner = document.getElementById('tvk-play-spinner');
-    if (tvkBtn) {
-      if (isBuffering) {
-        tvkBtn.classList.add('buffering');
-        if (tvkPlaySpinner) tvkPlaySpinner.classList.remove('hidden');
-        if (tvkPlayIcon) tvkPlayIcon.classList.add('hidden');
-        if (tvkPauseIcon) tvkPauseIcon.classList.add('hidden');
-      } else {
-        tvkBtn.classList.remove('buffering');
-        if (tvkPlaySpinner) tvkPlaySpinner.classList.add('hidden');
-        if (tvkPlayIcon) tvkPlayIcon.classList.remove('hidden');
-        if (tvkPauseIcon) tvkPauseIcon.classList.remove('hidden');
-      }
+
+    if (bufferingDebounceTimer) {
+      clearTimeout(bufferingDebounceTimer);
+      bufferingDebounceTimer = null;
     }
+
     if (isBuffering) {
-      if (el.btnPlayPause) el.btnPlayPause.classList.add('buffering');
-      if (el.playbarSpinner) el.playbarSpinner.classList.remove('hidden');
-      if (el.playIcon) el.playIcon.classList.add('hidden');
-      if (el.pauseIcon) el.pauseIcon.classList.add('hidden');
-      setPlayPauseState(true, true);
+      if (btn) btn.classList.add('playing');
+      if (tvkBtn) tvkBtn.classList.add('playing');
+
+      bufferingDebounceTimer = setTimeout(() => {
+        bufferingDebounceTimer = null;
+        if (state.isLoadingTrack || state.isBuffering) {
+          if (btn) btn.classList.add('buffering');
+          if (tvkBtn) tvkBtn.classList.add('buffering');
+          const pbSpinner = document.getElementById('playbar-spinner');
+          const tvkSpinner = document.getElementById('tvk-play-spinner');
+          if (pbSpinner) pbSpinner.classList.remove('hidden');
+          if (tvkSpinner) tvkSpinner.classList.remove('hidden');
+        }
+      }, 500);
     } else {
-      if (el.btnPlayPause) el.btnPlayPause.classList.remove('buffering');
-      if (el.playbarSpinner) el.playbarSpinner.classList.add('hidden');
-      if (el.playIcon) el.playIcon.classList.remove('hidden');
-      if (el.pauseIcon) el.pauseIcon.classList.remove('hidden');
+      if (btn) btn.classList.remove('buffering');
+      if (tvkBtn) tvkBtn.classList.remove('buffering');
+      const pbSpinner = document.getElementById('playbar-spinner');
+      const tvkSpinner = document.getElementById('tvk-play-spinner');
+      if (pbSpinner) pbSpinner.classList.add('hidden');
+      if (tvkSpinner) tvkSpinner.classList.add('hidden');
       setPlayPauseState(actuallyPlaying, true);
     }
   }
@@ -18613,8 +18615,8 @@ function bindCoverHoldZoom(wrapEl) {
             window.__RIFF_STORAGE_MAP__['riff_ui_lang'] = item.code;
             window.electronAPI.storageSaveBatch(window.__RIFF_STORAGE_MAP__);
           }
-          await applyI18n(item.code);
-          showToast(item.code === 'en' ? 'Language switched to English' : (item.code === 'ru' ? 'Язык изменён на русский' : 'Language changed'), 'success');
+          await runWithI18nLoadingOverlay(() => applyI18n(item.code));
+          showToast(item.code === 'en' ? 'Language switched to English' : 'Language changed', 'success');
         });
         frag.appendChild(btn);
       });
@@ -19027,7 +19029,7 @@ function bindCoverHoldZoom(wrapEl) {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '44.1.0';
+    let currentAppVersion = '44.1.1';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -19109,7 +19111,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (!manualUpdateCheck && rawVer && ignoredVer === rawVer) return;
 
       const displayVer = rawVer.endsWith('.0.0') ? ('v' + rawVer.slice(0, -4)) : (rawVer.endsWith('.0') ? ('v' + rawVer.slice(0, -2)) : ('v' + rawVer));
-      if (verEl) verEl.textContent = displayVer || 'v43.2';
+      if (verEl) verEl.textContent = displayVer || 'v44.1.1';
       if (timeEl) timeEl.textContent = formatRelativeReleaseTime(info?.publishedAt || info?.releaseDate || '');
 
       const { cleanText, bannerUrl } = parseGithubReleaseBodyAndBanner(info?.releaseNotes || '');
@@ -21946,7 +21948,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '44.1.0';
+    let appVer = '44.1.1';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -25592,7 +25594,21 @@ function bindCoverHoldZoom(wrapEl) {
     const btnRiff = document.getElementById('home-layout-riff');
     if (btnSp) btnSp.classList.toggle('active', sp);
     if (btnRiff) btnRiff.classList.toggle('active', !sp);
-    if (sp) renderSpotifyHome();
+    if (sp) {
+      renderSpotifyHome();
+    } else {
+      const spHome = document.getElementById('sp-home');
+      const homeHero = document.getElementById('home-hero');
+      if (spHome) spHome.style.display = 'none';
+      if (homeHero) {
+        homeHero.classList.remove('hidden');
+        homeHero.style.display = '';
+      }
+      initHomeHero();
+      if (!myWaveCurrentTracks || myWaveCurrentTracks.length === 0) {
+        loadHomePage();
+      }
+    }
   }
 
   const btnHomeSpotify = document.getElementById('home-layout-spotify');
@@ -27287,7 +27303,11 @@ function bindCoverHoldZoom(wrapEl) {
         const actBtn = row.querySelector('.sb-lib-row-action');
         if (actBtn) actBtn.addEventListener('click', (e) => { e.stopPropagation(); opts.onAction(); });
       }
-      row.addEventListener('click', () => playTrack(tr, list, idx));
+      row.addEventListener('click', () => {
+        const fullTrack = (state.favorites || []).find(f => isSameTrack(f, tr)) ||
+                          (state.history || []).find(h => isSameTrack(h, tr)) || tr;
+        playTrack(fullTrack, [fullTrack], 0, 'sidebar-pinned');
+      });
       row.addEventListener('contextmenu', (e) => openTrackContextMenu(e, tr, { row, index: idx }));
       return row;
     };
@@ -27494,8 +27514,13 @@ function bindCoverHoldZoom(wrapEl) {
       } else {
         document.documentElement.style.setProperty('--sidebar-w', '84px');
         document.body.classList.remove('sidebar-expanded');
+        const sheet = document.getElementById('sb-inline-presets-sheet');
+        if (sheet) sheet.classList.remove('open');
         if (save) localStorage.setItem('riff_sidebar_width', '84');
-        requestAnimationFrame(() => updateNavIndicator(false));
+        requestAnimationFrame(() => {
+          updateNavIndicator(false);
+          if (typeof resizeCanvases === 'function') resizeCanvases();
+        });
       }
       if (typeof resizeCanvases === 'function') requestAnimationFrame(resizeCanvases);
     };

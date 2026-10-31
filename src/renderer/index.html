@@ -795,22 +795,21 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
             </button>
             <div class="artist-hero-info">
-              <div class="artist-name-row">
+              <div class="artist-action-buttons" style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                <button type="button" class="btn-pill-primary artist-follow-btn" id="btn-artist-follow" style="height:36px; padding:0 16px; font-size:13px;">Follow</button>
+                <button type="button" class="btn-outline-pill artist-block-btn" id="btn-artist-block" style="height:36px; padding:0 16px; font-size:13px; color:#ffb4ab;">Block</button>
+                <button type="button" class="btn-outline-pill artist-bio-btn hidden" id="btn-artist-bio-modal" style="height:36px; padding:0 16px; font-size:13px;">Bio</button>
+              </div>
+              <div class="artist-title-wrap" style="display:flex; align-items:center; gap:12px;">
                 <h1 class="artist-title" id="artist-profile-name">Artist</h1>
-                <svg class="artist-verified-check hidden" id="artist-verified-badge" viewBox="0 0 24 24" width="24" height="24">
-                  <circle cx="12" cy="12" r="10" fill="#1d9bf0"/>
-                  <path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                </svg>
-                <button type="button" class="btn-outline-pill artist-follow-btn" id="btn-artist-follow">Follow</button>
-                <button type="button" class="btn-outline-pill artist-block-btn" id="btn-artist-block" style="height:34px;padding:0 14px;font-size:13px;color:#ffb4ab;">Block</button>
+                <div class="artist-m3-cookie-badge hidden" id="artist-verified-badge" title="Verified artist">
+                  <span class="m3-cookie-shape"></span>
+                  <svg class="m3-cookie-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
               </div>
               <div class="artist-fans-line" id="artist-fans-line"></div>
+              <div id="artist-profile-bio" style="display:none;"></div>
             </div>
-          </div>
-          <div class="artist-about-card hidden" id="artist-about-card">
-            <div class="artist-about-title" data-orig-text="About the artist">About the artist</div>
-            <div class="artist-about-bio" id="artist-profile-bio"></div>
-            <button class="btn-text artist-about-more hidden" id="btn-artist-bio-more">Show all</button>
           </div>
         </div>
 
@@ -2088,10 +2087,8 @@
 
             <div class="setting-item" id="card-spotify-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/spotify/1ED760" alt="Spotify" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>Spotify</span>
                 </div>
                 <button class="btn-pill-primary" id="btn-open-spotify-import" type="button">Import</button>
@@ -2100,12 +2097,8 @@
 
             <div class="setting-item" id="card-yt-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                    </svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/youtube/FF0000" alt="YouTube" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>YouTube</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-link-import" data-platform="youtube" type="button">Import</button>
@@ -2114,12 +2107,8 @@
 
             <div class="setting-item" id="card-ytm-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.333c-3.44 0-6.229 2.789-6.229 6.229s2.789 6.229 6.229 6.229 6.229-2.789 6.229-6.229-2.789-6.229-6.229-6.229zm-1.75 9.138V9.091l5.426 3.092-5.426 3.092z"/>
-                    </svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/youtubemusic/FF0000" alt="YouTube Music" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>YouTube Music</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-ytm-import" data-platform="ytmusic" type="button">Import</button>
@@ -2128,12 +2117,8 @@
 
             <div class="setting-item" id="card-sc-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M1.175 12.225c-.051 0-.094.044-.103.097l-.29 3.01c-.01.076.046.14.122.14.051 0 .094-.043.103-.097l.29-3.01a.117.117 0 0 0-.122-.14zm1.037-1.127c-.06 0-.11.048-.12.112l-.438 4.148c-.01.082.05.15.132.15.06 0 .11-.048.12-.112l.438-4.148c.01-.082-.05-.15-.132-.15zm1.096-.693c-.07 0-.13.054-.14.126l-.496 4.838c-.01.088.055.163.143.163.07 0 .13-.054.14-.126l.496-4.838c.01-.088-.055-.163-.143-.163zm1.144-.436c-.08 0-.148.06-.16.142l-.527 5.275c-.01.094.06.175.154.175.08 0 .148-.06.16-.142l.527-5.275c.01-.094-.06-.175-.154-.175zm1.18-.328c-.09 0-.165.068-.178.16l-.525 5.603c-.01.1.066.187.168.187.09 0 .165-.068.178-.16l.525-5.603c.01-.1-.066-.187-.168-.187zm1.205-.109c-.1 0-.183.075-.198.176l-.504 5.712c-.01.106.072.198.179.198.1 0 .183-.075.198-.176l.504-5.712c.01-.106-.072-.198-.179-.198zm1.222.054c-.11 0-.2.083-.217.195l-.47 5.658c-.01.112.078.21.192.21.11 0 .2-.083.217-.195l.47-5.658c.01-.112-.078-.21-.192-.21zm1.233.273c-.12 0-.218.09-.236.213l-.427 5.385c-.01.12.083.22.206.22.12 0 .218-.09.236-.213l.427-5.385c.01-.12-.083-.22-.206-.22zm1.238.655c-.13 0-.236.1-.255.232l-.374 4.73c-.01.126.09.232.22.232.13 0 .236-.1.255-.232l.374-4.73c.01-.126-.09-.232-.22-.232zm3.328-4.323c-.31 0-.61.05-.89.15a3.49 3.49 0 0 0-2.02-1.46c-.14-.04-.26.06-.26.2v8.94c0 .12.1.22.22.22h6.14c1.93 0 3.5-1.57 3.5-3.5s-1.57-3.5-3.5-3.5c-.38 0-.74.06-1.07.18-.08-1.59-1.39-2.85-3.03-2.85z"/>
-                    </svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/soundcloud/FF5500" alt="SoundCloud" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>SoundCloud</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-sc-import" data-platform="soundcloud" type="button">Import</button>
@@ -2142,12 +2127,8 @@
 
             <div class="setting-item" id="card-apple-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                    </svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/applemusic/FA243C" alt="Apple Music" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>Apple Music</span>
                 </div>
                 <button class="btn-pill-primary" id="btn-open-apple-import" type="button">Import</button>
@@ -2156,13 +2137,9 @@
 
             <div class="setting-item" id="card-deezer-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="../../assets/deezer-icon.png" alt="" width="20" height="20" style="object-fit: contain;">
-                  </span>
-                  <div style="display: flex; flex-direction: column; min-width: 0;">
-                    <span class="setting-name" data-i18n-fixed>Deezer</span>
-                  </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/deezer/A238FF" alt="Deezer" width="24" height="24" />
+                  <span class="setting-name" data-i18n-fixed>Deezer</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-deezer-import" data-platform="deezer" type="button">Import</button>
               </div>
@@ -2170,10 +2147,8 @@
 
             <div class="setting-item" id="card-yandex-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.928 1.5l-1.93 7.64L5.69 3.63l4.13 6.72L2 9.48l7.36 2.91L3.1 17.5l6.98-3.51-.83 8.51 2.77-7.79 4.79 6.64-2.58-7.61 7.77 1.34-6.62-4.29 6.12-4.96-7.44 2.41L16.92 1.5l-3.992 6.84L12.928 1.5z"/></svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://www.vectorlogo.zone/logos/yandex/yandex-icon.svg" alt="Yandex Music" width="24" height="24" />
                   <span class="setting-name" data-i18n-fixed>Yandex Music</span>
                 </div>
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-yandex-import" data-platform="yandex" type="button">Import</button>
@@ -2182,15 +2157,8 @@
 
             <div class="setting-item" id="card-json-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="12" y1="18" x2="12" y2="12"></line>
-                      <polyline points="9 15 12 12 15 15"></polyline>
-                    </svg>
-                  </span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img class="brand-icon-img" src="https://cdn.simpleicons.org/json/9E9AA8" alt="JSON" width="24" height="24" />
                   <span class="setting-name">JSON Playlist</span>
                 </div>
                 <button class="btn-pill-primary" id="btn-open-json-import" type="button">Import</button>
@@ -2703,7 +2671,7 @@
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 44.1.0</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 44.1.1</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -2740,7 +2708,7 @@
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v44.1.0</span>
+            <span class="settings-version-tag">v44.1.1</span>
           </div>
             </div>
           </div>
@@ -2857,7 +2825,7 @@
               <path class="morph-path-2" d="M 13.5 8.8 L 18 12 L 18 12 L 13.5 15.2 Z"></path>
             </svg>
             <svg id="pause-icon" class="hidden" style="display:none;" width="0" height="0"></svg>
-            <svg id="playbar-spinner" class="hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" style="width: 24px; height: 24px; position: absolute; margin: auto; inset: 0;"><path fill="currentColor"/></svg>
+            <svg id="playbar-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="30" height="30"><path fill="currentColor"/></svg>
           </button>
         </div>
         <button class="control-btn" id="btn-next" title="Next">
@@ -3997,7 +3965,7 @@
     <div class="ota-update-sheet" id="update-sheet-card">
       <div class="ota-update-time" id="update-release-time">Just now</div>
       <div class="ota-update-top-row">
-        <span class="ota-update-version" id="update-version-badge">v43.2</span>
+        <span class="ota-update-version" id="update-version-badge">v44.1.1</span>
         <div class="ota-update-actions">
           <button class="ota-btn-update" id="btn-update-now" type="button" data-i18n>Update</button>
           <button class="ota-btn-ignore" id="btn-update-later" type="button" data-i18n>Ignore</button>
@@ -4228,7 +4196,7 @@
                 <path class="morph-path-2" d="M 13.5 8.8 L 18 12 L 18 12 L 13.5 15.2 Z"></path>
               </svg>
               <svg id="tvk-pause-icon" class="pause-icon hidden" style="display:none;" width="0" height="0"></svg>
-              <svg id="tvk-play-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" style="width: 26px; height: 26px; position: absolute; margin: auto; inset: 0;"><path fill="currentColor"/></svg>
+              <svg id="tvk-play-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="36" height="36"><path fill="#ffffff"/></svg>
             </button>
           </div>
           <button class="control-btn" id="btn-tvk-next" title="Next" aria-label="Next">
