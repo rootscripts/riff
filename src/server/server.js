@@ -17,7 +17,13 @@ const dns = require('dns');
 const net = require('net');
 
 const PORT = 38472;
-const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, defaultDownloadDir, resolveBinary, clearBinaryCache, cookieJarHasYtLogin } = require('../shared/platform');
+// The server falls back to a random port when PORT is taken (e.g. a second
+// instance), so URLs handed to the renderer must use the real one.
+function listenPort() {
+  const a = server.address();
+  return a && typeof a === 'object' && a.port ? a.port : PORT;
+}
+const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, defaultDownloadDir, resolveBinary, clearBinaryCache, cookieJarHasYtLogin, jsRuntime } = require('../shared/platform');
 const YT_COOKIES_FILE = path.join(DATA_DIR, 'yt-cookies.txt');
 
 // A browser cookie export can contain .google.com session cookies without the
@@ -303,21 +309,28 @@ const downloadInFlight = new Map();
   };
 });
 
+// Drops entries whose `expires` (or numeric value) is in the past. In-flight
+// entries (`expires: 0` with a pending promise) are kept.
+function pruneExpired(map, now = Date.now()) {
+  for (const [key, value] of map) {
+    const expires = typeof value === 'number' ? value : (value && value.expires);
+    if (expires && expires < now) map.delete(key);
+  }
+}
+
 const cacheMaintenanceTimer = setInterval(() => {
   boundMap(searchCache, 20);
   boundMap(lyricsCache, 30);
-  if (global.gc) { try { global.gc(); } catch (_) {} }
+  // These caches are only evicted when the same key is read again, so they
+  // would otherwise grow for the whole session.
+  for (const map of [vibeCache, ytMixCache, dzArtistIdCache, albumCache, thumbHostFails]) pruneExpired(map);
+  boundMap(vibeCache, 50);
+  boundMap(ytMixCache, 100);
+  boundMap(dzArtistIdCache, 500);
+  boundMap(ytArtistCache, 2000);
 }, 300000);
 cacheMaintenanceTimer.unref();
 
-const MAX_CACHE_ENTRIES = 500;
-function cacheSet(map, key, value, max = MAX_CACHE_ENTRIES) {
-  if (!map.has(key) && map.size >= max) {
-    map.delete(map.keys().next().value);
-  }
-  map.set(key, value);
-  boundMap(map, 35);
-}
 
 let currentAppState = {};
 const sseClients = new Set();
@@ -1694,9 +1707,11 @@ function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
     };
     if (!finalArgs.includes('--force-ipv4')) prependFlags.push('--force-ipv4');
     if (!finalArgs.includes('--geo-bypass')) prependFlags.push('--geo-bypass');
-    if (!finalArgs.includes('--js-runtimes')) {
-      prependFlags.push('--js-runtimes', 'node');
-    }
+    const runtime = jsRuntime();
+    const rtIdx = finalArgs.indexOf('--js-runtimes');
+    if (rtIdx === -1) prependFlags.push('--js-runtimes', runtime.spec);
+    else if (finalArgs[rtIdx + 1] === 'node') finalArgs[rtIdx + 1] = runtime.spec;
+    Object.assign(cleanEnv, runtime.env);
     if (!finalArgs.includes('--remote-components')) prependFlags.push('--remote-components', 'ejs:github');
     if (!opts.noCookies && hasYtLoginCookies() && !finalArgs.includes('--cookies')) {
       // Several yt-dlp processes can run at once (playback, prefetch, download).
@@ -1877,8 +1892,9 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     '-o', `${tempBase}.%(ext)s`
   ];
 
+  const runtime = jsRuntime();
   if (platform === 'youtube') {
-    args.push('--extractor-args', YT_EXTRACTOR_ARGS);
+    args.push('--extractor-args', YT_EXTRACTOR_ARGS, '--js-runtimes', runtime.spec, '--remote-components', 'ejs:github');
   }
 
   args.push(trackUrl);
@@ -1891,7 +1907,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   try { cmd = ytDlpCommand(args); } catch (e) { downloadingSet.delete(cleanId); try { logger.error('Download command error: ' + (meta.title || trackId), e); } catch (_) {} return; }
 
   bgYtDlp(() => new Promise((done) => {
-    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: Object.assign({}, process.env, runtime.env) });
     let downloadTimer = null;
     if (DOWNLOAD_TIMEOUT_MS > 0) {
       downloadTimer = setTimeout(() => {
@@ -1974,7 +1990,7 @@ async function prefetchTrack(trackUrl, trackId, platform) {
     }
     if (streamUrl) {
       const isHls = streamUrl.includes('.m3u8');
-      const proxied = 'http://127.0.0.1:' + PORT + '/api/audio-proxy?url=' + encodeURIComponent(streamUrl);
+      const proxied = 'http://127.0.0.1:' + listenPort() + '/api/audio-proxy?url=' + encodeURIComponent(streamUrl);
       const data = {
         success: true,
         isLocal: false,
@@ -1983,8 +1999,8 @@ async function prefetchTrack(trackUrl, trackId, platform) {
         proxyUrl: proxied,
         isHls
       };
-      cacheSet(streamUrlCache, cacheKey, { timestamp: Date.now(), data });
-      if (cleanId) cacheSet(streamUrlCache, cleanId + '_' + quality, { timestamp: Date.now(), data });
+      streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
+      if (cleanId) streamUrlCache.set(cleanId + '_' + quality, { timestamp: Date.now(), data });
     }
   } catch (_) {
   } finally {
@@ -2677,7 +2693,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const data = {
       success: true,
       isLocal: true,
-      streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}`
+      streamUrl: `http://127.0.0.1:${listenPort()}/api/local-track?id=${encodeURIComponent(cleanId)}`
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
@@ -2688,7 +2704,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       success: true,
       isLocal: true,
       isDownload: true,
-      streamUrl: `http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`
+      streamUrl: `http://127.0.0.1:${listenPort()}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
@@ -2712,7 +2728,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const inflightUrl = await streamInfoInflight.get(cacheKey).catch(() => null);
     if (inflightUrl) {
       const isHls = inflightUrl.includes('.m3u8');
-      const proxied = 'http://127.0.0.1:' + PORT + '/api/audio-proxy?url=' + encodeURIComponent(inflightUrl);
+      const proxied = 'http://127.0.0.1:' + listenPort() + '/api/audio-proxy?url=' + encodeURIComponent(inflightUrl);
       const data = {
         success: true,
         isLocal: false,
@@ -2763,7 +2779,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         return res.end(JSON.stringify({ success: true, streamUrl: url, shareWebUrl }));
       }
       const isHls = url.includes('.m3u8');
-      const proxied = 'http://127.0.0.1:' + PORT + '/api/audio-proxy?url=' + encodeURIComponent(url);
+      const proxied = 'http://127.0.0.1:' + listenPort() + '/api/audio-proxy?url=' + encodeURIComponent(url);
       const data = {
         success: true,
         isLocal: false,
@@ -2986,7 +3002,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 
   const isHls = streamUrl.includes('.m3u8');
-  const proxied = 'http://127.0.0.1:' + PORT + '/api/audio-proxy?url=' + encodeURIComponent(streamUrl);
+  const proxied = 'http://127.0.0.1:' + listenPort() + '/api/audio-proxy?url=' + encodeURIComponent(streamUrl);
   const data = {
     success: true,
     isLocal: false,
@@ -3623,11 +3639,19 @@ async function handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl) {
       first = false;
       let got = 0;
       await new Promise((resolve) => {
-        pr.on('data', (d) => { got += d.length; if (!res.write(d)) { pr.pause(); res.once('drain', () => pr.resume()); } });
-        pr.on('end', resolve);
-        pr.on('error', resolve);
-        pr.on('aborted', resolve);
-        res.once('close', resolve);
+        const onDrain = () => pr.resume();
+        const done = () => {
+          // Detach from the long-lived response; adding these once per chunk
+          // piled up listeners on long tracks.
+          res.removeListener('close', done);
+          res.removeListener('drain', onDrain);
+          resolve();
+        };
+        pr.on('data', (d) => { got += d.length; if (!res.write(d)) { pr.pause(); res.once('drain', onDrain); } });
+        pr.on('end', done);
+        pr.on('error', done);
+        pr.on('aborted', done);
+        res.once('close', done);
       });
       if (got === 0) { evictStreamCache(initialUrl); evictStreamCache(targetUrl); break; }
       pos += got;
@@ -8083,7 +8107,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ 
       cached: !!cachedFile, 
-      streamUrl: cachedFile ? `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` : null 
+      streamUrl: cachedFile ? `http://127.0.0.1:${listenPort()}/api/local-track?id=${encodeURIComponent(cleanId)}` : null 
     }));
   }
 
@@ -8340,7 +8364,7 @@ const server = http.createServer(async (req, res) => {
             artist: meta.artist || 'Unknown artist',
             duration: meta.duration || 0,
             thumbnail: meta.thumbnail || '',
-            localThumbnail: fs.existsSync(path.join(THUMBNAILS_DIR, `${cleanId}.jpg`)) ? `http://127.0.0.1:${PORT}/api/local-thumbnail?id=${cleanId}` : (meta.thumbnail || ''),
+            localThumbnail: fs.existsSync(path.join(THUMBNAILS_DIR, `${cleanId}.jpg`)) ? `http://127.0.0.1:${listenPort()}/api/local-thumbnail?id=${cleanId}` : (meta.thumbnail || ''),
             platform: meta.platform || 'youtube',
             fileSize: stat.size,
             lastPlayed: meta.lastPlayed || stat.mtimeMs,
@@ -8453,6 +8477,12 @@ const server = http.createServer(async (req, res) => {
   res.end('Not found');
 });
 
+// Lets `riff lyrics` find the server when it is not on the default port.
+const PORT_FILE = path.join(DATA_DIR, 'server-port');
+function writePortFile(p) {
+  try { fs.writeFileSync(PORT_FILE, String(p)); } catch (_) {}
+}
+
 function startServer(port = PORT) {
   if (server.listening) {
     const address = server.address();
@@ -8461,6 +8491,7 @@ function startServer(port = PORT) {
   return new Promise((resolve, reject) => {
     server.listen(port, '127.0.0.1', () => {
       const p = server.address().port;
+      writePortFile(p);
       console.log(`devsize internal server running on http://127.0.0.1:${p}`);
       require('./tools').updateYtDlpIfManaged().catch(() => {});
       resolve(p);
@@ -8468,6 +8499,7 @@ function startServer(port = PORT) {
       if (err.code === 'EADDRINUSE') {
         server.listen(0, '127.0.0.1', () => {
           const p = server.address().port;
+          writePortFile(p);
           console.log(`devsize internal server running on fallback port http://127.0.0.1:${p}`);
           require('./tools').updateYtDlpIfManaged().catch(() => {});
           resolve(p);

@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMiniWindow: () => ipcRenderer.invoke('toggle-mini-window'),
   setMiniLyrics: (enabled) => ipcRenderer.invoke('set-mini-lyrics', enabled),
   isWindows: process.platform === 'win32',
+  platform: process.platform,
+  setWindowButtonsVisible: (visible) => ipcRenderer.send('set-window-buttons-visible', visible),
   setMediaKeys: (v) => ipcRenderer.send('set-media-keys', v),
   mediaKeysActive: () => ipcRenderer.send('media-keys-active'),
   welcomeFinish: (detail) => ipcRenderer.send('welcome-finish', detail),

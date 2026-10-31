@@ -4,6 +4,17 @@ const path = require('path');
 
 const IS_WIN = process.platform === 'win32';
 
+// Apps started from Finder/Dock inherit launchd's minimal PATH
+// (/usr/bin:/bin:/usr/sbin:/sbin), so yt-dlp could not find Homebrew's
+// ffmpeg or node. Add the usual install locations for child processes.
+if (process.platform === 'darwin') {
+  const parts = (process.env.PATH || '').split(':').filter(Boolean);
+  for (const dir of ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')]) {
+    if (!parts.includes(dir)) parts.push(dir);
+  }
+  process.env.PATH = parts.join(':');
+}
+
 const DEFAULT_DATA_DIR = IS_WIN
   ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Riff')
   : process.platform === 'darwin'
@@ -139,6 +150,34 @@ async function removeDirContents(dir, skipNames = new Set(['config.json'])) {
   }
 }
 
+// Top-level entries Riff owns inside the data dir. Moving the data dir only
+// touches these: on macOS the default data dir is also Electron's userData
+// (Local Storage, cookies, storage.json...), and a custom data dir may hold
+// unrelated user files, so neither may be copied around or deleted wholesale.
+const RIFF_DATA_ENTRIES = [
+  'tracks', 'custom-lyrics', 'lyrics', 'thumbnails', 'library', 'bin', 'plugins', 'themes', 'logs', 'i18n',
+  'metadata.json', 'library.json', 'startup.json', 'yt-cookies.txt', 'google-oauth.enc', 'spotify-auth.enc',
+  '.yt-logged-out', '.rifftutorial'
+];
+
+async function copyDataEntries(fromDir, toDir) {
+  await fs.promises.mkdir(toDir, { recursive: true });
+  for (const name of RIFF_DATA_ENTRIES) {
+    const src = path.join(fromDir, name);
+    let st;
+    try { st = await fs.promises.stat(src); } catch (e) { continue; }
+    const dest = path.join(toDir, name);
+    if (st.isDirectory()) await copyDirContents(src, dest);
+    else if (st.isFile()) await fs.promises.copyFile(src, dest);
+  }
+}
+
+async function removeDataEntries(dir) {
+  for (const name of RIFF_DATA_ENTRIES) {
+    try { await fs.promises.rm(path.join(dir, name), { recursive: true, force: true }); } catch (e) {}
+  }
+}
+
 function isExecutableFile(p) {
   try {
     fs.accessSync(p, fs.constants.X_OK);
@@ -196,8 +235,17 @@ function ytDlpCommand(args) {
     throw new Error('yt-dlp not found. Put yt-dlp and ffmpeg into the bin folder next to the app, or add them to PATH.');
   }
   const ffmpeg = resolveBinary('ffmpeg');
-  const extra = ffmpeg && !findInPath('ffmpeg') ? ['--ffmpeg-location', path.dirname(ffmpeg)] : [];
+  // Always point yt-dlp at the ffmpeg we resolved: findInPath also checks
+  // directories that are not necessarily on the child's PATH.
+  const extra = ffmpeg && !args.includes('--ffmpeg-location') ? ['--ffmpeg-location', path.dirname(ffmpeg)] : [];
   return { bin, args: extra.concat(args) };
+}
+
+// yt-dlp needs a JS runtime for YouTube challenges. Fall back to Electron's
+// own binary (run as Node via ELECTRON_RUN_AS_NODE) when none is installed.
+function jsRuntime() {
+  if (findInPath('node') || !process.versions.electron) return { spec: 'node', env: {} };
+  return { spec: `node:${process.execPath}`, env: { ELECTRON_RUN_AS_NODE: '1' } };
 }
 
 function clearBinaryCache() {
@@ -234,8 +282,9 @@ module.exports = {
   clearBinaryCache,
   IS_WIN, DATA_DIR, DEFAULT_DATA_DIR, CONFIG_PATH, BIN_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH,
   LIBRARY_DIR, LIBRARY_PATH, STARTUP_PATH,
-  findInPath, resolveBinary, ytDlpCommand, cookieJarHasYtLogin,
+  findInPath, resolveBinary, ytDlpCommand, jsRuntime, cookieJarHasYtLogin,
   tutorialDone, markTutorialDone,
   readStartupConfig, writeStartupConfig,
-  readConfig, resolveDataDir, setDataDir, resolveDownloadDir, defaultDownloadDir, setDownloadDir, copyDirContents, removeDirContents
+  readConfig, resolveDataDir, setDataDir, resolveDownloadDir, defaultDownloadDir, setDownloadDir, copyDirContents, removeDirContents,
+  RIFF_DATA_ENTRIES, copyDataEntries, removeDataEntries
 };

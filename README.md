@@ -129,8 +129,8 @@ macOS support is currently experimental and compiled via continuous integration.
    - `Riff-<version>-mac-arm64.dmg` for Apple Silicon (M1 / M2 / M3 / M4)
    - `Riff-<version>-mac-x64.dmg` for Intel-based hardware
 2. Open the disk image and drag Riff to your `Applications` directory.
-3. Because the binary is unsigned, right-click `Riff.app` in `Applications`, select **Open**, and confirm the prompt.
-4. If macOS flags the bundle as damaged, execute the following command in Terminal:
+3. Riff is ad-hoc signed but not notarized, so the first launch is blocked. Right-click `Riff.app` in `Applications`, select **Open**, and confirm the prompt. On macOS 15 and later, open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+4. If macOS still flags the bundle as damaged (older releases), execute the following command in Terminal:
    ```bash
    xattr -cr /Applications/Riff.app
    ```
@@ -138,10 +138,11 @@ macOS support is currently experimental and compiled via continuous integration.
    ```bash
    xattr -d -r com.apple.quarantine /path/to/Riff.dmg
    ```
-5. Install the required runtime binaries via Homebrew (Riff detects Homebrew paths automatically):
+5. Riff downloads yt-dlp on first launch. Installing the tools with Homebrew is recommended, especially on Apple Silicon, where the ffmpeg build Riff downloads needs Rosetta (Riff finds Homebrew paths even when opened from Finder or the Dock):
    ```bash
    brew install yt-dlp ffmpeg
    ```
+   Streaming works without ffmpeg; it is only needed for downloads and the audio editor.
 
 macOS application data and local indexes are stored in `~/Library/Application Support/Riff`.
 

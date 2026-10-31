@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 
 function getSystemAudioOutputInfo() {
   return new Promise((resolve) => {
@@ -73,6 +73,20 @@ function getSystemAudioOutputInfo() {
             }
           });
         });
+      });
+    } else if (process.platform === 'darwin') {
+      execFile('/usr/sbin/system_profiler', ['SPAudioDataType', '-json'], { timeout: 4000 }, (err, stdout) => {
+        let name = '';
+        if (!err && stdout) {
+          try {
+            const groups = JSON.parse(stdout).SPAudioDataType || [];
+            for (const group of groups) {
+              const device = (group._items || []).find((d) => d.coreaudio_default_audio_output_device === 'spaudio_yes');
+              if (device && device._name) { name = String(device._name); break; }
+            }
+          } catch (e) {}
+        }
+        resolve({ name: name || 'Default output', battery: null });
       });
     } else {
       resolve({ name: 'Default output', battery: null });

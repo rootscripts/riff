@@ -2293,6 +2293,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.classList.remove('titlebar-reveal');
   });
 
+  // macOS draws native traffic lights over the titlebar area; hide them while
+  // the titlebar is collapsed so they do not float over the content.
+  if (window.electronAPI && window.electronAPI.platform === 'darwin' && window.electronAPI.setWindowButtonsVisible) {
+    let macButtonsVisible = null;
+    const syncMacWindowButtons = () => {
+      const cls = document.body.classList;
+      const visible = !cls.contains('hide-titlebar') || cls.contains('titlebar-reveal');
+      if (visible === macButtonsVisible) return;
+      macButtonsVisible = visible;
+      window.electronAPI.setWindowButtonsVisible(visible);
+    };
+    new MutationObserver(syncMacWindowButtons).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    syncMacWindowButtons();
+  }
+
   const savedBannerBlur = parseInt(localStorage.getItem('riff_banner_blur') || '3', 10);
   const savedBannerOpacity = parseInt(localStorage.getItem('riff_banner_opacity') || '100', 10);
   const savedBannerFade = parseInt(localStorage.getItem('riff_banner_fade') || '100', 10);
@@ -9309,6 +9324,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.updateRowFade = updateRowFade;
 
+  // Rows that need their edge fade refreshed on resize. One shared listener;
+  // rows that left the document are dropped whenever a new row is bound.
+  const fadeRows = new Set();
+  window.addEventListener('resize', () => {
+    for (const row of fadeRows) {
+      if (row.isConnected) updateRowFade(row);
+      else fadeRows.delete(row);
+    }
+  }, { passive: true });
+
   function bindHorizontalWheel(row) {
     if (!row || row._wheelBound) return;
     row._wheelBound = true;
@@ -9328,16 +9353,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     let scrollStart = 0;
     let dragged = false;
 
+    // Rows are rebuilt on every search/render, so the window listener only
+    // lives for the duration of a drag; a permanent one kept every detached
+    // row (and its images) alive.
+    const onMouseUp = () => {
+      window.removeEventListener('mouseup', onMouseUp);
+      isDown = false;
+      setTimeout(() => { dragged = false; }, 40);
+    };
     row.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       isDown = true;
       dragged = false;
       startX = e.pageX - row.offsetLeft;
       scrollStart = row.scrollLeft;
-    });
-    window.addEventListener('mouseup', () => {
-      isDown = false;
-      setTimeout(() => { dragged = false; }, 40);
+      window.addEventListener('mouseup', onMouseUp);
     });
     row.addEventListener('mousemove', (e) => {
       if (!isDown) return;
@@ -9357,7 +9387,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, true);
 
     row.addEventListener('scroll', () => updateRowFade(row), { passive: true });
-    window.addEventListener('resize', () => updateRowFade(row), { passive: true });
+    for (const r of fadeRows) if (!r.isConnected) fadeRows.delete(r);
+    fadeRows.add(row);
     updateRowFade(row);
   }
   window.bindHorizontalWheel = bindHorizontalWheel;
@@ -17492,6 +17523,8 @@ function bindCoverHoldZoom(wrapEl) {
       if (action === 'play-pause') togglePlayPause();
       else if (action === 'next') playNext();
       else if (action === 'prev') playPrev();
+      else if (action === 'volume-up') adjustVolume(0.05);
+      else if (action === 'volume-down') adjustVolume(-0.05);
     });
   }
   function applyWelcomeResult(d) {
@@ -25100,7 +25133,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (!status) return;
 
     const isYtDlp = Boolean(status.ytdlp !== undefined ? status.ytdlp : status.ytDlp);
-    const isFfmpeg = Boolean(status.ffmpeg);
+    const isFfmpeg = Boolean(status.ffmpeg || status.ffmpegOptional);
     const isReady = isYtDlp && isFfmpeg;
     state.toolsReady = isReady;
 
@@ -25244,7 +25277,7 @@ function bindCoverHoldZoom(wrapEl) {
         const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/tools/status`);
         const status = await res.json();
         updateToolsUI(status);
-        const isReady = Boolean(status.ytdlp !== undefined ? status.ytdlp : status.ytDlp) && Boolean(status.ffmpeg);
+        const isReady = Boolean(status.ytdlp !== undefined ? status.ytdlp : status.ytDlp) && Boolean(status.ffmpeg || status.ffmpegOptional);
         const isError = Boolean(status.error || (status.progress && status.progress.status === 'error'));
         if (isReady) {
           clearInterval(toolsPollInterval);
@@ -25295,7 +25328,7 @@ function bindCoverHoldZoom(wrapEl) {
       updateToolsUI(status);
 
       const isYtDlp = Boolean(status.ytdlp !== undefined ? status.ytdlp : status.ytDlp);
-      const isFfmpeg = Boolean(status.ffmpeg);
+      const isFfmpeg = Boolean(status.ffmpeg || status.ffmpegOptional);
       if (!isYtDlp || !isFfmpeg) {
         state.toolsReady = false;
         const modal = document.getElementById('tools-install-modal');

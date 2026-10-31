@@ -2018,7 +2018,16 @@
 
     async function initLauncher() {
       const info = await bridge.launcherInfo();
-      const platform = info ? info.platform : (navigator.platform || '').toLowerCase().includes('win') ? 'win32' : 'linux';
+      const navPlatform = (navigator.platform || '').toLowerCase();
+      const platform = info ? info.platform : navPlatform.includes('win') ? 'win32' : navPlatform.includes('mac') ? 'darwin' : 'linux';
+
+      if (platform === 'darwin') {
+        // Apps live in /Applications on macOS; there is no launcher to install.
+        launcherTitle.textContent = 'Applications folder';
+        launcherSub.textContent = 'On macOS, keep Riff in the Applications folder to open it from Launchpad or Spotlight.';
+        setLauncherUnavailable('Drag Riff into Applications to keep it in Launchpad');
+        return;
+      }
 
       if (platform === 'win32') {
         launcherTitle.textContent = 'Start menu shortcut';
@@ -2121,6 +2130,8 @@
     });
 
     document.getElementById('winControls').classList.toggle('no-api', !(bridge.api && bridge.api.closeWindow));
+    // macOS shows native traffic lights instead.
+    if (bridge.api && bridge.api.platform === 'darwin') document.getElementById('winControls').style.display = 'none';
     document.getElementById('winMinBtn').addEventListener('click', () => {
       if (bridge.api && bridge.api.minimizeWindow) bridge.api.minimizeWindow();
     });

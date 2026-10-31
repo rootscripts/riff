@@ -80,7 +80,7 @@
       "category": "AudioVideo"
     },
     "mac": {
-      "icon": "assets/icon-512x512.png",
+      "icon": "assets/icon-1024.png",
       "category": "public.app-category.music",
       "target": [
         {
@@ -110,6 +110,7 @@
         "repo": "riff",
         "releaseType": "release"
       }
-    ]
+    ],
+    "afterPack": "scripts/mac-adhoc-sign.js"
   }
 }

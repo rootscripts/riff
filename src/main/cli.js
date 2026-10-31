@@ -8,8 +8,20 @@ if (!args.includes('lyrics') && !args.includes('--lyrics')) {
   process.exit(0);
 }
 
-const PORT = 38472;
-const URL = `http://127.0.0.1:${PORT}/api/lyrics-stream`;
+const fs = require('fs');
+const path = require('path');
+const { DATA_DIR } = require('../shared/platform');
+
+const DEFAULT_PORT = 38472;
+const PORT_FILE = path.join(DATA_DIR, 'server-port');
+
+// The app writes its real port here; it differs from the default when
+// another process already holds 38472. Re-read on every reconnect.
+function streamUrl() {
+  let port = DEFAULT_PORT;
+  try { port = parseInt(fs.readFileSync(PORT_FILE, 'utf8'), 10) || DEFAULT_PORT; } catch (e) {}
+  return `http://127.0.0.1:${port}/api/lyrics-stream`;
+}
 
 let cfonts = null;
 try {
@@ -91,7 +103,7 @@ function startStream() {
   process.stdout.write('\x1b[2J\x1b[H');
   console.log('\x1b[90m[Riff CLI] Awaiting real-time lyrics stream...\x1b[0m');
 
-  const req = http.get(URL, (res) => {
+  const req = http.get(streamUrl(), (res) => {
     let buffer = '';
 
     res.on('data', (chunk) => {

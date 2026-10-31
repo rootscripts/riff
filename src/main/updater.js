@@ -1,4 +1,4 @@
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -193,8 +193,10 @@ function initUpdater(getWindow) {
         }).catch(() => {});
       }
     } else {
-      app.relaunch();
-      app.exit(0);
+      // No in-place install here (macOS builds are unsigned, so Squirrel.Mac
+      // cannot update them): send the user to the release instead of just
+      // restarting into the same version.
+      shell.openExternal((current && current.htmlUrl) || releasesUrl);
     }
   };
 
