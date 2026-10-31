@@ -193,9 +193,6 @@ function initUpdater(getWindow) {
         }).catch(() => {});
       }
     } else {
-      // No in-place install here (macOS builds are unsigned, so Squirrel.Mac
-      // cannot update them): send the user to the release instead of just
-      // restarting into the same version.
       shell.openExternal((current && current.htmlUrl) || releasesUrl);
     }
   };

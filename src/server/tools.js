@@ -208,9 +208,6 @@ async function installFfmpeg() {
   }
 }
 
-// evermeet.cx publishes static macOS builds (Intel only, so Apple Silicon
-// needs Rosetta). No checksums are published, so each binary is test-run and
-// removed if it does not work.
 async function installFfmpegMac() {
   const failures = [];
   for (const name of ['ffmpeg', 'ffprobe']) {
@@ -248,8 +245,6 @@ function toolsStatus() {
     error: state.error,
     progress: Object.assign({}, state)
   };
-  // Streaming works without ffmpeg; on macOS it is only needed for downloads
-  // and editing, so its absence must not block the app.
   status.ffmpegOptional = process.platform === 'darwin';
   status.ffmpegError = state.ffmpegError;
   return status;
@@ -295,9 +290,6 @@ async function updateYtDlpIfManaged() {
   } catch (e) {}
   try {
     await run(bin, ['-U'], 120000);
-    // yt-dlp replaces its own executable while updating. If that fails halfway
-    // the managed binary can be gone, which would leave every playback attempt
-    // spawning a non-existent path. Reinstall it in that case.
     if (!fs.existsSync(bin)) {
       try { logger.log('warn', 'yt-dlp disappeared after self-update, reinstalling'); } catch (_) {}
       await installYtDlp();

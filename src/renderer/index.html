@@ -7,8 +7,299 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
   <link rel="stylesheet" href="styles.css">
   <script>if (/Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '')) document.documentElement.classList.add('platform-darwin');</script>
+  <style id="tg-account-critical-css">
+  #settings-nav-account.settings-account-nav-btn {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    padding: 0 12px !important;
+    gap: 10px !important;
+    margin-top: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+  }
+  #settings-nav-avatar.settings-nav-avatar {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    min-height: 30px !important;
+    max-height: 30px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    flex: 0 0 30px !important;
+    display: block !important;
+  }
+  .settings-nav-account-meta {
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+    line-height: 1.15 !important;
+    text-align: left !important;
+  }
+  .settings-nav-account-name {
+    font-size: calc(13.5px * var(--font-scale, 1)) !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .settings-nav-account-sub {
+    font-size: calc(11px * var(--font-scale, 1)) !important;
+    opacity: 0.72 !important;
+  }
+  #tg-account-hero.tg-account-hero {
+    position: relative !important;
+    width: 100% !important;
+    min-height: 236px !important;
+    border-radius: 26px !important;
+    overflow: hidden !important;
+    padding: 30px 24px 24px 24px !important;
+    margin-bottom: 14px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: radial-gradient(circle 280px at 50% 36%, var(--acc-c1, #733952) 0%, var(--acc-c2, #381a27) 100%) !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  #tg-account-hero.tg-account-hero::after {
+    display: none !important;
+  }
+  .tg-account-pattern {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+  }
+  .tg-pat-icon {
+    position: absolute !important;
+    width: 22px !important;
+    height: 22px !important;
+    display: block !important;
+    background-color: rgba(0, 0, 0, 0.24) !important;
+    -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+    mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+    pointer-events: none !important;
+  }
+  .tg-pat-icon.p1  { top: 10%; left: 21%; transform: rotate(-14deg) scale(0.95); opacity: 0.72; }
+  .tg-pat-icon.p2  { top: 24%; left: 31%; transform: rotate(-8deg) scale(1.06); opacity: 0.92; }
+  .tg-pat-icon.p3  { top: 53%; left: 30%; transform: rotate(10deg) scale(0.98); opacity: 0.86; }
+  .tg-pat-icon.p4  { top: 44%; left: 9%;  transform: rotate(-18deg) scale(0.84); opacity: 0.5; }
+  .tg-pat-icon.p5  { bottom: 13%; left: 19%; transform: rotate(12deg) scale(0.9); opacity: 0.64; }
+  .tg-pat-icon.p6  { top: 5%; left: 48%; transform: rotate(5deg) scale(0.92); opacity: 0.75; }
+  .tg-pat-icon.p7  { top: 24%; right: 31%; transform: rotate(12deg) scale(1.06); opacity: 0.92; }
+  .tg-pat-icon.p8  { top: 53%; right: 30%; transform: rotate(-10deg) scale(0.98); opacity: 0.86; }
+  .tg-pat-icon.p9  { top: 10%; right: 21%; transform: rotate(16deg) scale(0.95); opacity: 0.72; }
+  .tg-pat-icon.p10 { top: 44%; right: 9%;  transform: rotate(18deg) scale(0.84); opacity: 0.5; }
+  #tg-easter-meme.tg-pat-meme {
+    position: absolute !important;
+    bottom: 14% !important;
+    right: 14% !important;
+    width: 58px !important;
+    height: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+    min-height: 58px !important;
+    max-height: 58px !important;
+    border-radius: 12px !important;
+    object-fit: cover !important;
+    opacity: 0.96 !important;
+    box-shadow: none !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    touch-action: auto !important;
+    z-index: 6 !important;
+    display: block !important;
+    transform: none !important;
+    transition: transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1), opacity 160ms ease !important;
+  }
+  #tg-easter-meme.tg-pat-meme:hover {
+    transform: scale(1.1) !important;
+    opacity: 1 !important;
+  }
+  #tg-easter-meme.tg-pat-meme.switching {
+    opacity: 0 !important;
+    transform: scale(0.78, 0.78) !important;
+  }
+  .tg-account-center {
+    position: relative !important;
+    z-index: 3 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+  #btn-pick-account-avatar.account-avatar-picker {
+    position: relative !important;
+    width: 96px !important;
+    height: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 96px !important;
+    max-height: 96px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    background: rgba(0, 0, 0, 0.25) !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  #account-profile-avatar {
+    width: 96px !important;
+    height: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 96px !important;
+    max-height: 96px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    display: block !important;
+  }
+  .account-avatar-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    border-radius: 50% !important;
+    background: rgba(0, 0, 0, 0.45) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    opacity: 0 !important;
+    transition: opacity 150ms ease !important;
+  }
+  #btn-pick-account-avatar.account-avatar-picker:hover .account-avatar-overlay {
+    opacity: 1 !important;
+  }
+  #account-nickname-input.tg-account-name-input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    color: #ffffff !important;
+    font-family: var(--font-family) !important;
+    font-size: calc(21px * var(--font-scale, 1)) !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    padding: 2px 10px !important;
+    border-radius: 10px !important;
+    width: min(260px, 70vw) !important;
+    text-shadow: none !important;
+  }
+  #account-nickname-input.tg-account-name-input:hover,
+  #account-nickname-input.tg-account-name-input:focus {
+    background: rgba(255, 255, 255, 0.14) !important;
+  }
+  .tg-account-status {
+    display: none !important;
+  }
+  .tg-account-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 18px !important;
+    height: 18px !important;
+    border-radius: 5px !important;
+    background: #ffffff !important;
+    color: #1a1a1e !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+  }
+  .acc-btn {
+    height: 38px !important;
+    padding: 0 16px !important;
+    font-size: calc(13px * var(--font-scale, 1)) !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    border-radius: 999px !important;
+    box-sizing: border-box !important;
+  }
+  .acc-btn svg {
+    flex-shrink: 0;
+  }
+  .acc-orbital-widget {
+    position: relative !important;
+    width: 190px !important;
+    height: 190px !important;
+    flex: 0 0 190px !important;
+    border-radius: 50% !important;
+    display: block !important;
+    box-sizing: border-box !important;
+  }
+  .acc-orbital-center {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 66px !important;
+    height: 66px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+  }
+  .acc-orbital-riff-icon {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    background-color: #ffffff !important;
+    -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+    mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+  }
+  .acc-satellite-btn {
+    position: absolute !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    border-radius: 50% !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    z-index: 3 !important;
+    transition: transform 180ms cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+  .acc-satellite-btn::before,
+  .acc-satellite-btn::after {
+    display: none !important;
+  }
+  .acc-satellite-btn:hover {
+    transform: scale(1.18) !important;
+    z-index: 5 !important;
+  }
+  .acc-satellite-btn:active {
+    transform: scale(0.95) !important;
+  }
+  /* Exact Figma Orbital Coordinates */
+  .acc-satellite-btn.sat-soundcloud { top: 4px; left: 77px; background: #ff5500 !important; }
+  .acc-satellite-btn.sat-wave       { top: 20px; left: 135px; background: #1a1222 !important; }
+  .acc-satellite-btn.sat-lastfm     { top: 77px; left: 147px; background: #d51007 !important; }
+  .acc-satellite-btn.sat-discord    { top: 132px; left: 126px; background: #5865f2 !important; }
+  .acc-satellite-btn.sat-ytmusic    { top: 149px; left: 77px; background: #ff0000 !important; }
+  .acc-satellite-btn.sat-spotify    { top: 126px; left: 24px; background: #1ed760 !important; }
+  .acc-satellite-btn.sat-youtube    { top: 60px; left: 7px; background: #ffffff !important; }
+  body.perf .acc-satellite-btn { transition: none !important; }
+</style>
 </head>
 <body class="no-nav-transition">
   <div id="splash"><div id="splash-logo"></div></div>
@@ -100,12 +391,32 @@
 
   <div class="app-layout">
     <aside class="sidebar" id="sidebar">
+      <div class="sidebar-resize-edge" id="sidebar-resize-edge" title="Drag to resize sidebar"></div>
       <nav class="sidebar-nav">
         <div class="nav-active-indicator" id="nav-active-indicator"></div>
 
         <button class="nav-item active" data-view="discover" id="nav-discover" title="Home">
           <div class="nav-indicator">
             <img id="nav-home-app-icon" class="nav-home-app-icon" src="../../assets/02-editor.svg" alt="Home" draggable="false" />
+          </div>
+          <div class="sb-home-banner-content">
+            <span class="sb-home-banner-title" data-i18n-fixed>Riff</span>
+            <span class="sb-home-banner-Action" id="btn-sb-banner-radio" role="button" tabindex="0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+                <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+                <circle cx="12" cy="12" r="2" fill="currentColor"/>
+                <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+                <path d="M19.1 4.9c3.9 3.9 3.9 10.3 0 14.2"/>
+              </svg>
+              <span data-i18n>Radio</span>
+            </span>
+          </div>
+          <div class="sb-home-banner-fx" aria-hidden="true">
+            <span class="sb-home-float-logo f1"></span>
+            <span class="sb-home-float-logo f2"></span>
+            <span class="sb-home-float-logo f3"></span>
+            <span class="sb-home-float-logo f4"></span>
           </div>
         </button>
 
@@ -116,8 +427,15 @@
             </svg>
             <span class="nav-badge" id="favorites-count">0</span>
           </div>
+          <span class="nav-item-label" data-i18n>Liked songs</span>
         </button>
-        <button class="nav-item" data-view="albums" id="nav-albums" title="Albums"><div class="nav-indicator"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg><span class="nav-badge" id="albums-count">0</span></div></button>
+        <button class="nav-item" data-view="albums" id="nav-albums" title="Albums">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            <span class="nav-badge" id="albums-count">0</span>
+          </div>
+          <span class="nav-item-label" data-i18n>Albums</span>
+        </button>
 
         <button class="nav-item" data-view="local" id="nav-local" title="My files">
           <div class="nav-indicator">
@@ -126,6 +444,7 @@
             </svg>
             <span class="nav-badge" id="local-count">0</span>
           </div>
+          <span class="nav-item-label" data-i18n>My files</span>
         </button>
 
         <button class="nav-item" data-view="history" id="nav-history" title="History">
@@ -136,6 +455,7 @@
             </svg>
             <span class="nav-badge" id="history-count" hidden>0</span>
           </div>
+          <span class="nav-item-label" data-i18n>History</span>
         </button>
 
         <button class="nav-item" data-view="queue" id="nav-queue" title="Queue">
@@ -147,6 +467,7 @@
             </svg>
             <span class="nav-badge" id="queue-count">0</span>
           </div>
+          <span class="nav-item-label" data-i18n>Queue</span>
         </button>
 
         <div class="rail-divider"></div>
@@ -168,12 +489,33 @@
           </button>
         </div>
 
+        <div class="sidebar-library-wrap" id="sidebar-library-wrap">
+          <nav class="sb-horiz-tabs" id="sidebar-lib-chips">
+            <button type="button" class="sb-horiz-tab active" data-lib-filter="playlists" data-i18n>Playlists</button>
+            <button type="button" class="sb-horiz-tab" data-lib-filter="albums" data-i18n>Albums</button>
+            <button type="button" class="sb-horiz-tab" data-lib-filter="queue" data-i18n>Queue</button>
+          </nav>
+          <div class="sidebar-library-feed" id="sidebar-library-feed"></div>
+          <div class="sb-bottom-icon-bar" id="sb-bottom-icon-bar">
+            <button type="button" class="sb-bottom-icon-btn" id="btn-sb-settings" title="Settings" aria-label="Settings">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            </button>
+            <button type="button" class="sb-bottom-icon-btn" id="btn-sb-presets" title="Audio presets" aria-label="Audio presets">
+              <span class="material-symbols-outlined" style="font-size: 22px;">discover_tune</span>
+            </button>
+            <button type="button" class="sb-bottom-icon-btn" id="btn-sb-new-playlist" title="Create playlist" aria-label="Create playlist">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6H3"/><path d="M11 12H3"/><path d="M11 18H3"/><path d="M18 10v8"/><path d="M14 14h8"/></svg>
+            </button>
+          </div>
+        </div>
+
         <div class="sidebar-bottom-spacer"></div>
 
         <button class="nav-item" data-view="settings" id="nav-settings" title="Settings">
           <div class="nav-indicator">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
           </div>
+          <span class="nav-item-label" data-i18n>Settings</span>
         </button>
       </nav>
 
@@ -256,7 +598,23 @@
             </div>
             <div class="home-hero-dots" id="home-hero-dots"></div>
           </div>
-          <div class="sp-home" id="sp-home"><div class="spotify-promo" id="spotify-promo" hidden><img class="spotify-promo-art" src="../../assets/spotify-to-riff.png" alt="" draggable="false"><div class="spotify-promo-text"><span class="spotify-promo-title">Import tracks directly from Spotify to Riff!</span><span class="spotify-promo-sub">Bring your playlists over in a few clicks</span></div><button type="button" class="btn-pill-primary spotify-promo-btn" id="btn-spotify-promo-import">Import</button><button type="button" class="btn-icon-pill spotify-promo-close" id="btn-spotify-promo-close" aria-label="Dismiss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div><section class="sp-section" id="sp-made-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4 10a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/></svg><span data-i18n>For you</span><button class="btn-icon-pill" id="btn-regen-mixes" aria-label="Regenerate mixes" title="Regenerate mixes" style="margin-left: auto; width: 32px; height: 32px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></h2><div class="sp-row" id="sp-made"></div></section><section class="sp-section" id="sp-quick-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span data-i18n>Home</span></h2><div class="sp-quick" id="sp-quick"></div></section><section class="sp-section" id="sp-trend-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg><span data-i18n>Trending now</span></h2><div class="sp-row" id="sp-trend"></div></section><section class="sp-section" id="sp-artists-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span data-i18n>Favorite artists</span></h2><div class="sp-row fav-artists-row" id="sp-artists"></div></section></div>
+          <div class="sp-home" id="sp-home"><div class="spotify-promo hidden" id="spotify-promo" hidden>
+  <div class="spotify-promo-icons" aria-hidden="true">
+    <span class="sp-promo-ico" style="color:#1DB954;" title="Spotify"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg></span>
+    <span class="sp-promo-ico" style="color:#FF0033;" title="YouTube Music"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg></span>
+    <span class="sp-promo-ico" style="color:#FF5500;" title="SoundCloud"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.5 14.5c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-4c0-.28.22-.5.5-.5s.5.22.5.5v4zm-2 0c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-3c0-.28.22-.5.5-.5s.5.22.5.5v3zm12.5-.5c0 1.93-1.57 3.5-3.5 3.5H13V9.1c.7-.6 1.6-1.1 2.6-1.1 2.2 0 4.1 1.6 4.4 3.8.3-.2.7-.3 1-.3 1.4 0 2.5 1.1 2.5 2.5z"/></svg></span>
+    <span class="sp-promo-ico" style="color:#FA243C;" title="Apple Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></span>
+    <span class="sp-promo-ico" style="color:#FFCC00;" title="Yandex Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12.928 1.5l-1.93 7.64L5.69 3.63l4.13 6.72L2 9.48l7.36 2.91L3.1 17.5l6.98-3.51-.83 8.51 2.77-7.79 4.79 6.64-2.58-7.61 7.77 1.34-6.62-4.29 6.12-4.96-7.44 2.41L16.92 1.5l-3.992 6.84L12.928 1.5z"/></svg></span>
+  </div>
+  <div class="spotify-promo-text">
+    <span class="spotify-promo-title" data-i18n>Import your music from Spotify, YouTube Music, SoundCloud, Apple & Yandex Music!</span>
+    <span class="spotify-promo-sub" data-i18n>Transfer your playlists and liked songs in a few clicks in Settings → Integrations</span>
+  </div>
+  <button type="button" class="btn-pill-primary spotify-promo-btn" id="btn-spotify-promo-import" data-i18n>Open Integrations</button>
+  <button type="button" class="btn-icon-pill spotify-promo-close" id="btn-spotify-promo-close" aria-label="Dismiss">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+  </button>
+</div><section class="sp-section" id="sp-made-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4 10a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/></svg><span data-i18n>For you</span><button class="btn-icon-pill" id="btn-regen-mixes" aria-label="Regenerate mixes" title="Regenerate mixes" style="margin-left: auto; width: 32px; height: 32px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></h2><div class="sp-row" id="sp-made"></div></section><section class="sp-section" id="sp-quick-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span data-i18n>Home</span></h2><div class="sp-quick" id="sp-quick"></div></section><section class="sp-section" id="sp-trend-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg><span data-i18n>Trending now</span></h2><div class="sp-row" id="sp-trend"></div></section><section class="sp-section" id="sp-artists-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span data-i18n>Favorite artists</span></h2><div class="sp-row fav-artists-row" id="sp-artists"></div></section></div>
           </div>
         </div>
 
@@ -384,9 +742,9 @@
                   <button class="m3-dropdown-option" data-value="added-asc" type="button">Date added (oldest)</button>
                 </div>
               </div>
-              <button class="btn-pill-primary" id="btn-play-playlist-shuffle" title="Play playlist shuffled" aria-label="Play playlist shuffled" style="height: 40px; padding: 0 20px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor" stroke="none"></polygon><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
-                <span>Play</span>
+              <button class="btn-pill-primary" id="btn-play-playlist-shuffle" title="Play playlist" aria-label="Play playlist" style="height: 40px; padding: 0 22px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+                <span data-i18n>Play</span>
               </button>
               <button class="btn-outline-pill" id="btn-download-playlist" title="Download all songs" aria-label="Download all songs">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -492,6 +850,7 @@
           <div class="settings-search-box">
             <svg class="settings-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="settings-search-input" placeholder="Search settings..." data-i18n-attr="placeholder" autocomplete="off">
+            <button type="button" class="search-clear-btn hidden" id="settings-search-clear" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
               <button class="settings-nav-btn" data-cat="interface">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -575,6 +934,14 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>
                 <span data-i18n>Plugins</span>
               </button>
+              <div style="flex: 1 1 auto; min-height: 12px;"></div>
+              <button class="settings-nav-btn settings-account-nav-btn" data-cat="account" id="settings-nav-account" type="button">
+                <img id="settings-nav-avatar" class="settings-nav-avatar" src="../../assets/icon.png" alt="" draggable="false" />
+                <div class="settings-nav-account-meta">
+                  <span class="settings-nav-account-name" id="settings-nav-account-name" data-i18n-fixed>User</span>
+                  <span class="settings-nav-account-sub" data-i18n>Account</span>
+                </div>
+              </button>
             </nav>
             <div class="settings-pane">
               <div class="settings-section" data-cat="interface">
@@ -620,9 +987,9 @@
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">UI scale</span>
-                <span class="setting-value" id="settings-val-scale">100%</span>
+                <span class="setting-value" id="settings-val-scale">105%</span>
               </div>
-              <input type="range" class="pill-range" id="settings-slider-scale" min="80" max="130" step="5" value="100">
+              <input type="range" class="pill-range" id="settings-slider-scale" min="80" max="130" step="5" value="105">
               <div class="setting-hints"><span>Compact</span><span>Default</span><span>Large</span></div>
             </div>
 
@@ -715,6 +1082,16 @@
               </div>
             </div>
 
+            <div class="setting-item" id="setting-show-yt-platform">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Show YouTube platform</span>
+                  <span class="setting-hint" data-i18n>Not recommended: regular YouTube includes non-music videos and loads slower than YouTube Music</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-show-yt-platform" type="button"><span class="thumb"></span></button>
+              </div>
+            </div>
+
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -748,24 +1125,37 @@
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <span class="setting-name">Interface opacity</span>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-ui-alpha">20%</span>
+                  <span class="setting-value" id="val-ui-alpha">100%</span>
                   <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
                 </div>
               </div>
-              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="20">
+              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="100">
               <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
             </div>
 
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Text opacity</span>
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Floating panels blur</span>
+                  <span class="setting-hint" data-i18n>Background blur intensity for floating sheets, menus, and overlays</span>
+                </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-text-alpha">100%</span>
-                  <button class="btn-outline-pill" id="btn-reset-text-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                  <span class="setting-value" id="val-panel-blur">24px</span>
+                  <button class="btn-outline-pill" id="btn-reset-panel-blur" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));" data-i18n>Reset</button>
                 </div>
               </div>
-              <input type="range" class="pill-range" id="slider-text-alpha" min="1" max="100" step="1" value="100">
-              <div class="setting-hints"><span>1%</span><span>Default</span><span>100%</span></div>
+              <input type="range" class="pill-range" id="slider-panel-blur" min="0" max="48" step="1" value="24">
+              <div class="setting-hints"><span>0px</span><span>Default (24px)</span><span>48px</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Play/Pause button background</span>
+                  <span class="setting-hint" data-i18n>Show or hide the rounded background behind the main play/pause button</span>
+                </div>
+                <button class="effect-switch-btn active" id="btn-play-btn-bg"><span class="thumb"></span></button>
+              </div>
             </div>
 
             <div class="setting-item">
@@ -781,7 +1171,7 @@
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Show wave visualizer in bottom bar</span>
-                <button class="effect-switch-btn active" id="btn-bar-wave"><span class="thumb"></span></button>
+                <button class="effect-switch-btn" id="btn-bar-wave"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -969,6 +1359,140 @@
                 <div class="ct-list m3-group" id="plugins-list"></div>
               </div>
 
+              <div class="settings-section cat-hidden" data-cat="account" id="settings-section-account">
+                <div class="tg-account-hero" id="tg-account-hero">
+                  <div class="tg-account-pattern" aria-hidden="true">
+                    <span class="tg-pat-icon p1"></span>
+                    <span class="tg-pat-icon p2"></span>
+                    <span class="tg-pat-icon p3"></span>
+                    <span class="tg-pat-icon p4"></span>
+                    <span class="tg-pat-icon p5"></span>
+                    <span class="tg-pat-icon p6"></span>
+                    <span class="tg-pat-icon p7"></span>
+                    <span class="tg-pat-icon p8"></span>
+                    <span class="tg-pat-icon p9"></span>
+                    <span class="tg-pat-icon p10"></span>
+                    <img id="tg-easter-meme" class="tg-pat-meme" src="" alt="" title="Meow! Click me" draggable="false" />
+                  </div>
+                  <div class="tg-account-center">
+                    <div class="account-avatar-picker" id="btn-pick-account-avatar" title="Click to change avatar">
+                      <img id="account-profile-avatar" src="../../assets/icon.png" alt="" draggable="false" />
+                      <div class="account-avatar-overlay">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                      </div>
+                    </div>
+                    <div class="tg-account-name-wrap">
+                      <input type="text" id="account-nickname-input" class="tg-account-name-input" value="User" maxlength="32" placeholder="User" autocomplete="off" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="m3-group">
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Profile avatar</span>
+                        <span class="setting-hint" data-i18n>Click your avatar above to pick a custom photo or reset to default</span>
+                      </div>
+                      <button type="button" class="btn-outline-pill acc-btn" id="btn-reset-account-avatar" data-i18n>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        <span>Reset avatar</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Export Riff account (.rfacc)</span>
+                        <span class="setting-hint" data-i18n>Save your profile, playlists, favorites, history, and settings to a file</span>
+                      </div>
+                      <button type="button" class="btn-pill-primary acc-btn" id="btn-acc-export-rfacc" data-i18n>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <span>Export</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" data-i18n>Import Riff account (.rfacc)</span>
+                        <span class="setting-hint" data-i18n>Restore your entire Riff account from a .rfacc backup file</span>
+                      </div>
+                      <button type="button" class="btn-outline-pill acc-btn" id="btn-acc-import-rfacc" data-i18n>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        <span>Import</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="setting-item" id="account-integrations-item" style="padding: 18px 24px !important;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; flex-wrap: wrap;">
+                      <div style="display: flex; flex-direction: column; gap: 6px; min-width: 200px; flex: 1;">
+                        <span class="setting-name" style="font-size: calc(16px * var(--font-scale, 1)); font-weight: 600;" data-i18n>Connected services</span>
+                        <span class="setting-hint" style="max-width: 380px; line-height: 1.45;" data-i18n>Manage your accounts, import playlists and stream from linked platforms</span>
+                        <button type="button" class="btn-outline-pill acc-btn" id="btn-acc-open-integrations" style="margin-top: 12px; width: fit-content;" data-i18n>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          <span>Manage integrations</span>
+                        </button>
+                      </div>
+
+                      
+                      <div class="acc-orbital-widget" id="acc-orbital-widget">
+                        <div class="acc-orbital-center" title="Riff Core">
+                          <span class="acc-orbital-riff-icon"></span>
+                        </div>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-soundcloud" data-platform="soundcloud" title="SoundCloud">
+                          <svg width="19" height="19" viewBox="0 0 24 24" fill="#ffffff"><path d="M11.5 14.5c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-4c0-.28.22-.5.5-.5s.5.22.5.5v4zm-2 0c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-3c0-.28.22-.5.5-.5s.5.22.5.5v3zm-2 0c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-2c0-.28.22-.5.5-.5s.5.22.5.5v2zm-2 0c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-1c0-.28.22-.5.5-.5s.5.22.5.5v1zm14.5-.5c0 1.93-1.57 3.5-3.5 3.5H13V9.1c.7-.6 1.6-1.1 2.6-1.1 2.2 0 4.1 1.6 4.4 3.8.3-.2.7-.3 1-.3 1.4 0 2.5 1.1 2.5 2.5z"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-wave" data-platform="wave" title="For you / Wave">
+                          <svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#9333ea"/><path d="M7 9.5v5m2.5-7.5v10m3-9v8m2.5-6v4" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-lastfm" data-platform="lastfm" title="Last.fm">
+                          <svg width="19" height="19" viewBox="0 0 24 24" fill="#ffffff"><path d="M10.584 17.21l-.88-2.392s-1.43 1.594-3.573 1.594c-1.897 0-3.244-1.649-3.244-4.288 0-3.382 1.704-4.591 3.381-4.591 2.42 0 3.189 1.567 3.849 3.574l.88 2.749c.88 2.666 2.529 4.81 7.285 4.81 3.409 0 5.718-1.045 5.718-3.793 0-2.227-1.265-3.381-3.63-3.931l-1.758-.385c-1.21-.275-1.567-.77-1.567-1.595 0-.934.742-1.484 1.952-1.484 1.32 0 2.034.495 2.144 1.677l2.749-.33c-.22-2.474-1.924-3.492-4.729-3.492-2.474 0-4.893.935-4.893 3.932 0 1.87.907 3.051 3.189 3.601l1.87.44c1.402.33 1.869.907 1.869 1.704 0 1.017-.99 1.43-2.86 1.43-2.776 0-3.93-1.457-4.59-3.464l-.907-2.749c-1.155-3.573-2.997-4.893-6.653-4.893C2.144 5.334 0 7.89 0 12.233c0 4.18 2.144 6.434 5.993 6.434 3.106 0 4.591-1.457 4.591-1.457z"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-discord" data-platform="discord" title="Discord RPC">
+                          <svg width="20" height="20" viewBox="0 0 127.14 96.36" fill="#ffffff"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.1,46,96,53,91.08,65.69,84.69,65.69Z"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-ytmusic" data-platform="ytmusic" title="YouTube Music">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff"><path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.333c-3.44 0-6.229 2.789-6.229 6.229s2.789 6.229 6.229 6.229 6.229-2.789 6.229-6.229-2.789-6.229-6.229-6.229zm-1.75 9.138V9.091l5.426 3.092-5.426 3.092z"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-spotify" data-platform="spotify" title="Spotify">
+                          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#121214" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="10" fill="#1ed760" stroke="none"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
+                        </button>
+
+                        
+                        <button type="button" class="acc-satellite-btn sat-youtube" data-platform="youtube" title="YouTube">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="#ff0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name" style="color: #ffb4ab;" data-i18n>Log out of account</span>
+                        <span class="setting-hint" data-i18n>Sign out and reset local profile, playlists, favorites, and settings</span>
+                      </div>
+                      <button type="button" class="btn-outline-pill acc-btn" id="btn-acc-logout" style="color: #ffb4ab;" data-i18n>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        <span>Log out</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="settings-section" data-cat="theme">
                 <div class="m3-group">
             <div class="setting-item">
@@ -1022,7 +1546,7 @@
                 <button type="button" class="theme-swatch" data-color="#F28B82" style="background: #F28B82;" title="Red"></button>
                 <button type="button" class="theme-swatch" data-color="#F48FB1" style="background: #F48FB1;" title="Pink"></button>
                 <label class="theme-custom-color-btn" title="Choose custom color">
-                  <input type="color" id="settings-custom-color-input" value="#6750A4">
+                  <input type="color" id="settings-custom-color-input" value="#5247d1">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </label>
               </div>
@@ -1031,9 +1555,9 @@
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Hue</span>
-                <span class="setting-value" id="val-theme-hue">270°</span>
+                <span class="setting-value" id="val-theme-hue">246°</span>
               </div>
-              <div class="sl hue-seg" id="hue-seg"><div class="hue-seg-track"></div><input type="range" class="theme-hue-slider" id="slider-theme-hue" min="0" max="360" step="1" value="270"></div>
+              <div class="sl hue-seg" id="hue-seg"><div class="hue-seg-track"></div><input type="range" class="theme-hue-slider" id="slider-theme-hue" min="0" max="360" step="1" value="246"></div>
             </div>
 
             <div class="setting-item">
@@ -1058,9 +1582,9 @@
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Brightness</span>
-                <span class="setting-value" id="val-theme-brightness">0%</span>
+                <span class="setting-value" id="val-theme-brightness">20%</span>
               </div>
-              <input type="range" class="theme-brightness-slider" id="slider-theme-brightness" min="0" max="100" step="1" value="0">
+              <input type="range" class="theme-brightness-slider" id="slider-theme-brightness" min="0" max="100" step="1" value="20">
               <div class="setting-hints"><span>Dark</span><span>Default</span><span>Bright</span></div>
             </div>
 
@@ -1121,7 +1645,7 @@
                   <span class="setting-name">Track banners</span>
                   <span class="setting-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show artwork backdrop banner for currently playing track</span>
                 </div>
-                <button class="effect-switch-btn active" data-adv="track_banners" id="btn-toggle-track-banners"><span class="thumb"></span></button>
+                <button class="effect-switch-btn" data-adv="track_banners" id="btn-toggle-track-banners"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -1218,7 +1742,7 @@
                   <span class="setting-name">Cover background</span>
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Uses a blurred version of the current cover as the background</span>
                 </div>
-                <button class="effect-switch-btn active" data-adv="cover_bg"><span class="thumb"></span></button>
+                <button class="effect-switch-btn" data-adv="cover_bg"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -1239,6 +1763,16 @@
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Show artists in search</span>
                 <button class="effect-switch-btn active" id="btn-search-artists"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Classic rounded track cards</span>
+                  <span class="setting-hint" data-i18n>Use rounder 20px corners and press animation on track rows</span>
+                </div>
+                <button type="button" class="effect-switch-btn" id="btn-classic-track-rows"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -1314,7 +1848,7 @@
                   <span class="setting-name">Progress bar background</span>
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show the uncompleted track rail in the playbar</span>
                 </div>
-                <button class="effect-switch-btn active" id="btn-progress-bg"><span class="thumb"></span></button>
+                <button class="effect-switch-btn" id="btn-progress-bg"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -2169,7 +2703,7 @@
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 44.0.0</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 44.1.0</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -2206,7 +2740,7 @@
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v44.0.0</span>
+            <span class="settings-version-tag">v44.1.0</span>
           </div>
             </div>
           </div>
@@ -2219,6 +2753,20 @@
       <div class="right-panel-banner" id="right-panel-banner"><div class="banner-image"></div></div>
       <div class="right-panel-header">
         <div class="right-panel-header-actions">
+          <button class="lyrics-action-btn" id="btn-add-custom-lyrics" title="Edit lyrics" aria-label="Edit lyrics">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <span>Edit</span>
+          </button>
+          <button class="lyrics-action-btn" id="btn-sync-lyrics" title="Sync lyrics" aria-label="Sync lyrics">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>Sync</span>
+          </button>
+          <button class="lyrics-action-btn hidden" id="btn-translate-lyrics" title="Translate lyrics" aria-label="Translate lyrics">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.11 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+          </button>
+          <button class="lyrics-action-btn" id="btn-tv-karaoke" title="Fullscreen karaoke" aria-label="Fullscreen karaoke">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
           <button class="lyrics-mode-btn" id="btn-lyrics-mode" title="Toggle line mode">
             <span>Word</span>
           </button>
@@ -2248,24 +2796,6 @@
       </div>
 
       <div class="lyrics-section">
-        <div class="lyrics-header">
-          <div class="lyrics-header-actions">
-            <button class="lyrics-action-btn" id="btn-add-custom-lyrics" title="Edit lyrics" aria-label="Edit lyrics">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-              <span>Edit</span>
-            </button>
-            <button class="lyrics-action-btn" id="btn-sync-lyrics" title="Sync lyrics" aria-label="Sync lyrics">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <span>Sync</span>
-            </button>
-            <button class="lyrics-action-btn hidden" id="btn-translate-lyrics" title="Translate lyrics" aria-label="Translate lyrics">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.11 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
-            </button>
-            <button class="lyrics-action-btn" id="btn-tv-karaoke" title="Fullscreen karaoke" aria-label="Fullscreen karaoke">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-            </button>
-          </div>
-        </div>
         <div class="lyrics-container" id="lyrics-container"></div>
       </div>
     </aside>

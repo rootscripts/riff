@@ -1,10 +1,5 @@
 
-let RPC = null;
-try {
-  RPC = require('discord-rpc');
-} catch (e) {
-  try { console.warn('[Discord RPC] discord-rpc is not installed, rich presence disabled'); } catch (_) {}
-}
+const RPC = require('discord-rpc');
 
 const CLIENT_ID = '1520100510877749358';
 const RECONNECT_DELAY_MS = 15000;
@@ -17,7 +12,7 @@ let reconnectTimer = null;
 let isDestroying = false;
 
 function initRPC() {
-  if (!RPC || rpcClient || isDestroying) return;
+  if (rpcClient || isDestroying) return;
 
   rpcClient = new RPC.Client({ transport: 'ipc' });
 

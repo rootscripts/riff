@@ -15,3 +15,9 @@ plugins/lastfm-scrobbler.js
 test/lastfm-scrobbler.test.js
 yt-cookies.txt
 src/yt-cookies.txt
+storage.json
+*/storage.json
+*.rfacc
+*.enc
+*.tmp
+.yt-logged-out

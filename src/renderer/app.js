@@ -150,8 +150,8 @@ try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
   }
   window.__riffLogError = reportError;
   window.addEventListener('error', (e) => {
-    const msg = e.message || String(e);
-    if (/ResizeObserver loop/i.test(msg)) return;
+    const msg = e.message || '';
+    if (!msg || /ResizeObserver loop|\[object ErrorEvent\]/i.test(msg)) return;
     reportError('ERROR', msg, e.error ? e.error.stack : null);
   });
   window.addEventListener('unhandledrejection', (e) => {
@@ -169,45 +169,45 @@ try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
   const finish = () => {
     if (!splash.isConnected || splash.classList.contains('hide')) return;
     splash.classList.add('hide');
-    setTimeout(() => splash.remove(), 480);
+    window.__riffSplashDone = true;
+    window.dispatchEvent(new CustomEvent('riff-splash-done'));
+    setTimeout(() => splash.remove(), 420);
   };
-  const safety = setTimeout(finish, 1850);
+  const safety = setTimeout(finish, 1450);
   try {
     const res = await fetch('../../assets/riff.svg');
     const svgText = await res.text();
     host.innerHTML = svgText;
     const svg = host.querySelector('svg');
     const paths = svg ? Array.from(svg.querySelectorAll('path, circle, rect, polygon, polyline')) : [];
-    const lengths = paths.map((p) => {
-      const len = typeof p.getTotalLength === 'function' ? p.getTotalLength() : 600;
-      p.style.fill = 'var(--md-sys-color-primary, #D0BCFF)';
-      p.style.fillOpacity = '0';
-      p.style.stroke = 'var(--md-sys-color-primary, #D0BCFF)';
+    const accent = localStorage.getItem('riff_theme_accent') || '#5247d1';
+    paths.forEach((p) => {
+      const len = typeof p.getTotalLength === 'function' ? Math.ceil(p.getTotalLength()) : 600;
+      p.style.fill = accent;
+      p.style.stroke = accent;
       p.style.strokeWidth = '6px';
       p.style.strokeLinecap = 'round';
       p.style.strokeLinejoin = 'round';
       p.style.strokeDasharray = String(len);
       p.style.strokeDashoffset = String(len);
-      return len;
+      p.style.fillOpacity = '0';
+      if (typeof p.animate === 'function') {
+        p.animate([
+          { strokeDashoffset: len, fillOpacity: 0, strokeOpacity: 1, offset: 0 },
+          { strokeDashoffset: 0, fillOpacity: 0.15, strokeOpacity: 1, offset: 0.65 },
+          { strokeDashoffset: 0, fillOpacity: 1, strokeOpacity: 0.25, offset: 1 }
+        ], { duration: 920, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+      }
     });
-    const t0 = performance.now();
-    const dur = 1150;
-    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-    const tick = (now) => {
-      const p = Math.min(1, (now - t0) / dur);
-      const drawK = easeOut(Math.min(1, p / 0.72));
-      const fillK = p < 0.5 ? 0 : easeOut((p - 0.5) / 0.5);
-      const scale = 1.28 - 0.28 * easeOut(p);
-      host.style.transform = 'scale(' + scale.toFixed(3) + ')';
-      paths.forEach((elP, i) => {
-        elP.style.strokeDashoffset = String((lengths[i] * (1 - drawK)).toFixed(1));
-        elP.style.fillOpacity = String(fillK.toFixed(3));
-        elP.style.strokeOpacity = String((1 - fillK * 0.65).toFixed(3));
-      });
-      if (p < 1) requestAnimationFrame(tick);
-      else { clearTimeout(safety); finish(); }
-    };
-    requestAnimationFrame(tick);
+    if (typeof host.animate === 'function') {
+      const anim = host.animate([
+        { transform: 'scale(1.22)', opacity: 0.2 },
+        { transform: 'scale(1)', opacity: 1 }
+      ], { duration: 920, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+      anim.onfinish = () => { clearTimeout(safety); finish(); };
+    } else {
+      setTimeout(() => { clearTimeout(safety); finish(); }, 920);
+    }
   } catch (_) {
     clearTimeout(safety);
     finish();
@@ -250,6 +250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   var state = { vibeTracks: [] };
   var myWaveCurrentTracks = [];
   var maybeShowYtAuthSheet = async function() {};
+  window.maybeShowYtAuthSheet = maybeShowYtAuthSheet;
   try { localStorage.removeItem('riff_stats'); } catch (e) {}
 
   await HomeCache.init();
@@ -372,23 +373,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const i18nSessionMap = new Map();
 
+  const i18nPending = new Set();
+  const i18nFailed = new Set();
+  let i18nQueue = new Map();
+  let i18nTimer = null;
+  function i18nFlush() {
+    i18nTimer = null;
+    const queued = i18nQueue;
+    i18nQueue = new Map();
+    for (const [lang, set] of queued) {
+      const texts = [...set];
+      const finish = (ok, translations) => {
+        if (!i18nSessionMap.has(lang)) i18nSessionMap.set(lang, new Map());
+        texts.forEach((s, i) => {
+          const key = lang + '\u0000' + s;
+          i18nPending.delete(key);
+          const tr = ok && translations && translations[i];
+          if (tr && tr !== s) i18nSessionMap.get(lang).set(s, tr);
+          else i18nFailed.add(key);  
+        });
+      };
+      fetch(`http://127.0.0.1:${state.serverPort}/api/i18n-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: lang, texts }),
+        signal: AbortSignal.timeout(15000)
+      }).then(r => r.json())
+        .then(data => finish(!!(data && data.success), data && data.translations))
+        .catch(() => finish(false, null));
+    }
+  }
+
   function t(str) {
     if (!str || typeof str !== 'string') return str;
     const lang = localStorage.getItem('riff_ui_lang') || 'en';
     if (lang === 'en') return str;
-    const dict = i18nSessionMap.get(lang);
-    if (dict && dict.has(str)) return dict.get(str);
-    if (state.serverPort) {
-      fetch(`http://127.0.0.1:${state.serverPort}/api/i18n-batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: lang, texts: [str] })
-      }).then(r => r.json()).then(data => {
-        if (data && data.success && data.translations && data.translations[0]) {
-          if (!i18nSessionMap.has(lang)) i18nSessionMap.set(lang, new Map());
-          i18nSessionMap.get(lang).set(str, data.translations[0]);
-        }
-      }).catch(() => {});
+    if (typeof BUILTIN_UI_DICT !== 'undefined' && BUILTIN_UI_DICT[lang] && BUILTIN_UI_DICT[lang][str]) {
+      return BUILTIN_UI_DICT[lang][str];
     }
     return str;
   }
@@ -513,7 +534,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const savedScale = parseFloat(localStorage.getItem('devsize_ui_scale') || '100');
+  if (localStorage.getItem('riff_defaults_v44_applied') !== '1') {
+    localStorage.setItem('riff_defaults_v44_applied', '1');
+    if (!localStorage.getItem('riff_platform') || localStorage.getItem('riff_platform') === 'youtube') {
+      localStorage.setItem('riff_platform', 'ytmusic');
+    }
+    if (!localStorage.getItem('riff_ui_alpha') || localStorage.getItem('riff_ui_alpha') === '20') {
+      localStorage.setItem('riff_ui_alpha', '100');
+    }
+    if (localStorage.getItem('riff_adv_cover_bg') === null) {
+      localStorage.setItem('riff_adv_cover_bg', 'false');
+    }
+    if (localStorage.getItem('riff_adv_track_banners') === null) {
+      localStorage.setItem('riff_adv_track_banners', 'false');
+    }
+    if (localStorage.getItem('riff_bar_wave') === null) {
+      localStorage.setItem('riff_bar_wave', '0');
+    }
+    if (!localStorage.getItem('riff_theme_accent') || localStorage.getItem('riff_theme_accent') === '#6750A4') {
+      localStorage.setItem('riff_theme_accent', '#1DB954');
+      if (!localStorage.getItem('riff_theme_intensity') || localStorage.getItem('riff_theme_intensity') === '0') {
+        localStorage.setItem('riff_theme_intensity', '85');
+      }
+      if (!localStorage.getItem('riff_theme_brightness') || localStorage.getItem('riff_theme_brightness') === '0') {
+        localStorage.setItem('riff_theme_brightness', '50');
+      }
+    }
+    if (!localStorage.getItem('devsize_ui_scale') || localStorage.getItem('devsize_ui_scale') === '100') {
+      localStorage.setItem('devsize_ui_scale', '105');
+    }
+  }
+
+  if (localStorage.getItem('riff_defaults_v44_hue246') !== '1') {
+    localStorage.setItem('riff_defaults_v44_hue246', '1');
+    localStorage.setItem('riff_theme_accent', '#5247d1');
+    localStorage.setItem('riff_theme_brightness', '20');
+    localStorage.setItem('riff_theme_intensity', '85');
+  }
+
+  const savedScale = parseFloat(localStorage.getItem('devsize_ui_scale') || '105');
   applyScale(savedScale);
 
   function applyScale(scalePercent) {
@@ -731,9 +790,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
-    themeAccent: localStorage.getItem('riff_theme_accent') || '#6750A4',
-    themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity') || '0'),
-    themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness') || '0'),
+    themeAccent: localStorage.getItem('riff_theme_accent') || '#5247d1',
+    themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity') || '85', 10),
+    themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness') || '20', 10),
     trEnabled: localStorage.getItem('riff_tr_enabled') === 'true',
     trLang: localStorage.getItem('riff_tr_lang') || 'en',
     lyricsTranslationLang: localStorage.getItem('riff_tr_lang') || 'en',
@@ -1074,7 +1133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ]);
 
   function generateM3Palette(hexColor, mode, intensity, brightness) {
-    if (!hexColor) hexColor = '#6750A4';
+    if (!hexColor) hexColor = '#5247d1';
     const rgb = hexToRgb(hexColor);
     const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
     const h = hsl.h;
@@ -1110,7 +1169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const hTert = (h + style.tertHueShift) % 360;
 
     const isMonochrome = intensityFactor < 0.08 || (styleKey === 'neutral' && intensityFactor < 0.05);
-    const br = (typeof brightness === 'number' ? brightness : 50) / 100;
+    const br = (typeof brightness === 'number' ? brightness : 20) / 100;
 
     if (mode === 'light') {
       const LB = (v) => Math.max(0, Math.min(100, Math.round(v + (br - 0.5) * 24)));
@@ -1172,7 +1231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-outline-variant', '#CAC4D0');
       }
     } else {
-      const B = (v) => Math.max(0, Math.min(100, Math.round(v * (br * 2))));
+      const B = (v) => Math.max(0, Math.min(24, Math.round(v * (0.35 + br * 0.95))));
       if (isMonochrome) {
         
 
@@ -1274,9 +1333,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   let cachedDimColor = '';
   let animationFrameId = null;
   function refreshCachedThemeColors() {
+    const btn = document.getElementById('btn-play-pause');
+    const btnBg = btn ? getComputedStyle(btn).backgroundColor : '';
+    const bodyStyle = getComputedStyle(document.body);
     const rootStyle = getComputedStyle(document.documentElement);
-    cachedPrimaryColor = rootStyle.getPropertyValue('--md-sys-color-primary').trim() || '#6750A4';
-    cachedDimColor = rootStyle.getPropertyValue('--md-sys-color-on-surface').trim() || '#E6E0E9';
+    const rawPri = (btnBg && btnBg !== 'rgba(0, 0, 0, 0)' && btnBg !== 'transparent')
+      ? btnBg
+      : (bodyStyle.getPropertyValue('--md-sys-color-primary').trim() || rootStyle.getPropertyValue('--md-sys-color-primary').trim() || state.themeAccent || '#B69DF8');
+    cachedPrimaryColor = rawPri;
+    cachedDimColor = bodyStyle.getPropertyValue('--md-sys-color-on-surface-solid').trim() || rootStyle.getPropertyValue('--md-sys-color-on-surface-solid').trim() || '#E6E0E9';
     hasDrawnPausedFrame = false;
   }
 
@@ -1515,7 +1580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let activeCoverBgUrl = '';
 
   function setCoverBg(url) {
-    const enabled = getAdv('cover_bg', true);
+    const enabled = getAdv('cover_bg', false);
     const layers = document.querySelectorAll('#cover-bg .cover-bg-layer');
     if (!enabled || !url) {
       activeCoverBgUrl = '';
@@ -2006,9 +2071,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                           sliderUiAlpha: document.getElementById('slider-ui-alpha'),
                           valUiAlpha: document.getElementById('val-ui-alpha'),
                           btnResetUiAlpha: document.getElementById('btn-reset-ui-alpha'),
-                          sliderTextAlpha: document.getElementById('slider-text-alpha'),
-                          valTextAlpha: document.getElementById('val-text-alpha'),
-                          btnResetTextAlpha: document.getElementById('btn-reset-text-alpha'),
+                          sliderPanelBlur: document.getElementById('slider-panel-blur'),
+                          valPanelBlur: document.getElementById('val-panel-blur'),
+                          btnResetPanelBlur: document.getElementById('btn-reset-panel-blur'),
+                          btnPlayBtnBg: document.getElementById('btn-play-btn-bg'),
                           themeModeBtns: document.querySelectorAll('.theme-mode-btn'),
                           themeSwatches: document.querySelectorAll('.theme-swatch'),
                           customColorInput: document.getElementById('settings-custom-color-input'),
@@ -2066,6 +2132,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                           btnRefreshVibe: document.getElementById('btn-refresh-vibe')
   };
   if (el.nativeAudio) el.nativeAudio.preload = 'auto';
+
+  if (el.viewSettings) {
+    document.body.appendChild(el.viewSettings);
+    const sv = el.viewSettings.querySelector('.settings-view');
+    if (sv && !document.getElementById('btn-close-settings-modal')) {
+      const closeWrap = document.createElement('button');
+      closeWrap.type = 'button';
+      closeWrap.id = 'btn-close-settings-modal';
+      closeWrap.className = 'settings-modal-close-btn';
+      closeWrap.title = 'Close Settings (Esc)';
+      closeWrap.innerHTML = `<span class="settings-close-circle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span><span class="settings-close-esc">ESC</span>`;
+      closeWrap.addEventListener('click', () => closeSettingsModal());
+      sv.appendChild(closeWrap);
+    }
+    el.viewSettings.addEventListener('mousedown', (e) => {
+      if (e.target === el.viewSettings) closeSettingsModal();
+    });
+  }
 
 
   var TRANSLATION_LANGUAGES = [
@@ -2165,7 +2249,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { code: 'pa', name: 'Punjabi', flag: '🇮🇳' },
     { code: 'qu', name: 'Quechua', flag: '🇵🇪' },
     { code: 'ro', name: 'Romanian', flag: '🇷🇴' },
-    { code: 'ru', name: 'Russian', flag: '🇷🇺' },
+    { code: 'ru', name: 'Русский', flag: '🇷🇺' },
     { code: 'sm', name: 'Samoan', flag: '🇼🇸' },
     { code: 'sa', name: 'Sanskrit', flag: '🇮🇳' },
     { code: 'gd', name: 'Scots Gaelic', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
@@ -2191,7 +2275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { code: 'tr', name: 'Turkish', flag: '🇹🇷' },
     { code: 'tk', name: 'Turkmen', flag: '🇹🇲' },
     { code: 'ak', name: 'Twi (Akan)', flag: '🇬🇭' },
-    { code: 'uk', name: 'Ukrainian', flag: '🇺🇦' },
+    { code: 'uk', name: 'Українська', flag: '🇺🇦' },
     { code: 'ur', name: 'Urdu', flag: '🇵🇰' },
     { code: 'ug', name: 'Uyghur', flag: '🇨🇳' },
     { code: 'uz', name: 'Uzbek', flag: '🇺🇿' },
@@ -2203,22 +2287,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     { code: 'zu', name: 'Zulu', flag: '🇿🇦' }
   ];
   window.TRANSLATION_LANGUAGES = TRANSLATION_LANGUAGES;
-  const UI_TRANSLATION_LANGUAGES = TRANSLATION_LANGUAGES.filter(language =>
-    ['en', 'ru', 'uk'].includes(language.code)
-  );
+  const UI_TRANSLATION_LANGUAGES = TRANSLATION_LANGUAGES;
   const UI_TRANSLATION_LANGUAGE_CODES = new Set(UI_TRANSLATION_LANGUAGES.map(language => language.code));
 
   function getSupportedUiLanguage(language) {
     return UI_TRANSLATION_LANGUAGE_CODES.has(language) ? language : 'en';
   }
 
-  var RTL_UI_LANGS = new Set(['ar', 'fa', 'per', 'fas', 'prs', 'pes', 'farsi', 'persian', 'he', 'iw', 'ur', 'ps', 'ckb', 'sd', 'ug', 'yi']);
   function syncDocumentDirection(langCode) {
     const baseLang = String(langCode || 'en').toLowerCase().split(/[-_]/)[0];
-    const isRtl = RTL_UI_LANGS.has(baseLang);
-    document.documentElement.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
+    document.documentElement.setAttribute('dir', 'ltr');
     document.documentElement.setAttribute('lang', baseLang || 'en');
-    document.body.classList.toggle('rtl-ui', isRtl);
+    document.body.classList.remove('rtl-ui');
   }
 
   ['Vocal', 'Air', 'Bass'].forEach(type => {
@@ -2249,6 +2329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.body.classList.toggle('hide-titlebar', !!getAdv('hide_titlebar', false));
   document.body.classList.toggle('keep-bar-timestamps', !getAdv('autohide_timestamps', true));
   document.body.classList.toggle('classic-sidebar', !!getAdv('classic_sidebar', false));
+  document.body.classList.toggle('classic-track-rows', localStorage.getItem('riff_classic_track_rows') === '1');
 
   let titlebarRevealHideTimer = null;
   let pointerY = Infinity;
@@ -2293,8 +2374,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.classList.remove('titlebar-reveal');
   });
 
-  // macOS draws native traffic lights over the titlebar area; hide them while
-  // the titlebar is collapsed so they do not float over the content.
   if (window.electronAPI && window.electronAPI.platform === 'darwin' && window.electronAPI.setWindowButtonsVisible) {
     let macButtonsVisible = null;
     const syncMacWindowButtons = () => {
@@ -2320,18 +2399,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyBannerFit(savedBannerFit);
 
   function applyUiOpacity() {
-    const rawUi = parseInt(localStorage.getItem('riff_ui_alpha') || '20', 10);
-    const rawText = parseInt(localStorage.getItem('riff_text_alpha') || '100', 10);
+    const rawUi = parseInt(localStorage.getItem('riff_ui_alpha') || '100', 10);
     const uiAlpha = Math.max(20, Math.min(100, isNaN(rawUi) ? 100 : rawUi));
-    const textAlpha = Math.max(1, Math.min(100, isNaN(rawText) ? 100 : rawText));
 
     document.documentElement.style.setProperty('--ui-alpha', `${uiAlpha}%`);
-    document.documentElement.style.setProperty('--text-alpha', `${textAlpha}%`);
+    document.documentElement.style.setProperty('--text-alpha', `100%`);
 
     if (el.sliderUiAlpha) el.sliderUiAlpha.value = uiAlpha;
     if (el.valUiAlpha) el.valUiAlpha.textContent = `${uiAlpha}%`;
-    if (el.sliderTextAlpha) el.sliderTextAlpha.value = textAlpha;
-    if (el.valTextAlpha) el.valTextAlpha.textContent = `${textAlpha}%`;
+
+    const rawBlur = parseInt(localStorage.getItem('riff_panel_blur') ?? '24', 10);
+    const panelBlur = Math.max(0, Math.min(48, isNaN(rawBlur) ? 24 : rawBlur));
+    document.documentElement.style.setProperty('--panel-blur', `${panelBlur}px`);
+    document.body.classList.toggle('no-panel-blur', panelBlur <= 0);
+    if (el.sliderPanelBlur) el.sliderPanelBlur.value = panelBlur;
+    if (el.valPanelBlur) el.valPanelBlur.textContent = `${panelBlur}px`;
+
+    const savedPlayBtnBg = localStorage.getItem('riff_play_btn_bg') !== 'false';
+    document.body.classList.toggle('play-btn-nobg', !savedPlayBtnBg);
+    if (el.btnPlayBtnBg) el.btnPlayBtnBg.classList.toggle('active', savedPlayBtnBg);
   }
 
   applyUiOpacity();
@@ -2360,6 +2446,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function applyDrawerState(triggerBtn) {
     if (!railDrawer) return;
+
+    const btnSbP = document.getElementById('btn-sb-presets');
+    if (btnSbP) btnSbP.classList.toggle('active', openDrawerState === 'presets');
 
     if (!openDrawerState) {
       if (activeDrawerMode !== null) {
@@ -2703,15 +2792,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         scrubberCanvas.className = 'squiggly-canvas';
         el.scrubberTrack.appendChild(scrubberCanvas);
       }
-      const rect = el.scrubberTrack.getBoundingClientRect();
-      const rw = rect.width || (el.scrubberTrack.clientWidth) || 300;
+      if (!el.scrubberTrack._roBound && window.ResizeObserver) {
+        el.scrubberTrack._roBound = true;
+        new ResizeObserver(() => resizeCanvases()).observe(el.scrubberTrack);
+      }
+      const rw = Math.max(100, el.scrubberTrack.clientWidth || Math.round(el.scrubberTrack.getBoundingClientRect().width) || 300);
+      const rh = 40;
       cachedTrackWidth = rw;
-      cachedTrackHeight = Math.max(40, rect.height);
+      cachedTrackHeight = rh;
       hasDrawnPausedFrame = false;
       scrubberCanvas.width = Math.round(rw * dpr);
-      scrubberCanvas.height = Math.round(Math.max(40, rect.height) * dpr);
-      scrubberCanvas.style.width = '100%';
-      scrubberCanvas.style.height = '100%';
+      scrubberCanvas.height = Math.round(rh * dpr);
+      scrubberCanvas.style.width = `${rw}px`;
+      scrubberCanvas.style.height = '40px';
       const ctx = scrubberCanvas.getContext('2d');
       ctx.resetTransform();
       ctx.scale(dpr, dpr);
@@ -3034,7 +3127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     miniCtx.fillStyle = '#ffffff';
                     miniCtx.beginPath();
-                    miniCtx.roundRect(x, y, barWidth, barHeight, 2);
+                    miniCtx.roundRect(x, y, Math.max(0, barWidth), Math.max(0, barHeight), 2);
                     miniCtx.fill();
                   }
                 }
@@ -3096,7 +3189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     tvkCtx.fillStyle = '#ffffff';
                     tvkCtx.beginPath();
-                    tvkCtx.roundRect(x, y, barWidth, barH, Math.min(barWidth / 2, 3));
+                    tvkCtx.roundRect(x, y, Math.max(0, barWidth), Math.max(0, barH), Math.max(0, Math.min(barWidth / 2, 3)));
                     tvkCtx.fill();
                   }
                 }
@@ -3128,7 +3221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     tvkCtx.fillStyle = '#ffffff';
                     tvkCtx.beginPath();
-                    tvkCtx.roundRect(x, y, barWidth, barH, Math.min(barWidth / 2, 3));
+                    tvkCtx.roundRect(x, y, Math.max(0, barWidth), Math.max(0, barH), Math.max(0, Math.min(barWidth / 2, 3)));
                     tvkCtx.fill();
                   }
                 }
@@ -3191,7 +3284,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const barH = Math.max(2, Math.min(bh - 2, symHeights[i]));
                     const x = startX + i * (barW + gap);
                     barBgCtx.beginPath();
-                    barBgCtx.roundRect(x, bh - barH, barW, barH, 3);
+                    barBgCtx.roundRect(x, bh - barH, Math.max(0, barW), Math.max(0, barH), 3);
                     barBgCtx.fill();
                   }
                 }
@@ -3225,7 +3318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const barH = Math.max(2, Math.min(bh - 2, symHeights[i]));
                     const x = startX + i * (barW + gap);
                     barBgCtx.beginPath();
-                    barBgCtx.roundRect(x, bh - barH, barW, barH, 3);
+                    barBgCtx.roundRect(x, bh - barH, Math.max(0, barW), Math.max(0, barH), 3);
                     barBgCtx.fill();
                   }
                 }
@@ -3262,8 +3355,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sh = cachedTrackHeight || 40;
         if (!state.isTvKaraokeOpen) sCtx.clearRect(0, 0, sw, sh);
 
-        const dt = scrubLastTime === 0 ? 0.016 : Math.min((timestamp - scrubLastTime) / 1000, 0.1);
-        scrubLastTime = timestamp;
+        const nowMs = performance.now();
+        const dt = (scrubLastTime <= 0 || nowMs <= scrubLastTime) ? 0.016 : Math.min((nowMs - scrubLastTime) / 1000, 0.05);
+        scrubLastTime = nowMs;
 
         const dur = getReliableTrackDuration();
         let cur = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
@@ -3321,7 +3415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           const padLeft = 5.5;
           const padRight = 5.5;
-          const trackWidth = sw - padLeft - padRight;
+          const trackWidth = Math.max(0, sw - padLeft - padRight);
           const knobCenterX = Math.max(padLeft, Math.min(sw - padRight, padLeft + scrubProgress * trackWidth));
 
           if (scrubPrevKnobX === null) scrubPrevKnobX = knobCenterX;
@@ -3330,10 +3424,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           const k = (2 * Math.PI) / 42;
 
-          if (isDraggingScrubber) {
-            scrubPhase += deltaX * k;
-          } else if (state.isPlaying) {
-            scrubPhase += 3.5 * dt;
+          if (state.isPlaying) {
+            scrubPhase = (scrubPhase + 3.5 * dt) % (Math.PI * 200);
           }
 
           const noKnob = document.body.classList.contains('no-knob');
@@ -3345,8 +3437,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           const bgStartX = noKnob ? knobCenterX : (knobCenterX + (curKnobW / 2) + 4);
           const bgEndX = sw - padRight;
 
-          if (!cachedPrimaryColor) refreshCachedThemeColors();
-          const primaryColor = '#ffffff';
+          if (!cachedPrimaryColor || cachedPrimaryColor.startsWith('var(') || cachedPrimaryColor.startsWith('color-mix')) refreshCachedThemeColors();
+          const primaryColor = cachedPrimaryColor;
           const dimColor = cachedDimColor;
 
           const centerY = sh / 2;
@@ -3379,7 +3471,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
               const step = 2;
               for (let x = waveStart; x <= waveEnd; x += step) {
-                const angle = scrubPhase - (waveEnd - x) * k;
+                const angle = (x - waveStart) * k + scrubPhase;
                 const y = centerY + Math.sin(angle) * 5;
                 if (x === waveStart) {
                   sCtx.moveTo(x, y);
@@ -3387,8 +3479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   sCtx.lineTo(x, y);
                 }
               }
-
-              const finalY = centerY + Math.sin(scrubPhase) * 5;
+              const finalY = centerY + Math.sin((waveEnd - waveStart) * k + scrubPhase) * 5;
               sCtx.lineTo(waveEnd, finalY);
               sCtx.stroke();
             }
@@ -3396,7 +3487,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (!noKnob) {
             sCtx.beginPath();
-            sCtx.roundRect(knobLeft, centerY - curKnobH / 2, curKnobW, curKnobH, curKnobR);
+            sCtx.roundRect(knobLeft, centerY - curKnobH / 2, Math.max(1, curKnobW), Math.max(1, curKnobH), Math.max(0, curKnobR));
             sCtx.fillStyle = primaryColor;
             sCtx.fill();
           }
@@ -3420,9 +3511,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const curKnobH = 22 + (28 - 22) * scrubKnobAnim;
             const curKnobR = Math.max(0, 3.75 + (4.5 - 3.75) * scrubKnobAnim);
 
-            const padLeft = 5.5;
-            const padRight = 5.5;
-            const trackWidth = tw - padLeft - padRight;
+            const padLeft = 10;
+            const padRight = 10;
+            const trackWidth = Math.max(0, tw - padLeft - padRight);
             const knobCenterX = padLeft + scrubProgress * trackWidth;
 
             if (scrubPrevKnobX === null) scrubPrevKnobX = knobCenterX;
@@ -3431,10 +3522,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const k = (2 * Math.PI) / 42;
 
-            if (isDraggingScrubber) {
-              scrubPhase += deltaX * k;
-            } else if (state.isPlaying) {
-              scrubPhase += 3.5 * dt;
+            if (state.isPlaying) {
+              scrubPhase = (scrubPhase + 3.5 * dt) % (Math.PI * 200);
             }
 
             const noKnob = document.body.classList.contains('no-knob');
@@ -3448,7 +3537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const centerY = th / 2;
 
-            if (bgStartX < bgEndX - 1) {
+            if (bgStartX < bgEndX - 1 && localStorage.getItem('riff_progress_bg') === 'true' && !document.body.classList.contains('no-progress-bg')) {
               tCtx.save();
               tCtx.beginPath();
               tCtx.lineWidth = 9.5;
@@ -3474,16 +3563,17 @@ document.addEventListener('DOMContentLoaded', async () => {
               } else {
                 const step = 2;
                 for (let x = waveStart; x <= waveEnd; x += step) {
-                  const angle = scrubPhase - (waveEnd - x) * k;
-                  const y = centerY + Math.sin(angle) * 5;
+                  const angle = (x - waveStart) * k + scrubPhase;
+                  const taper = Math.max(0, Math.min(1, (x - waveStart) / 10, (waveEnd - x) / 10));
+                  const y = centerY + Math.sin(angle) * 5 * taper;
                   if (x === waveStart) {
                     tCtx.moveTo(x, y);
                   } else {
                     tCtx.lineTo(x, y);
                   }
                 }
-
-                const finalY = centerY + Math.sin(scrubPhase) * 5;
+                const finalTaper = Math.max(0, Math.min(1, (waveEnd - waveStart) / 10, (waveEnd - waveEnd) / 10));
+                const finalY = centerY + Math.sin((waveEnd - waveStart) * k + scrubPhase) * 5 * finalTaper;
                 tCtx.lineTo(waveEnd, finalY);
                 tCtx.stroke();
               }
@@ -3491,7 +3581,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (!noKnob) {
               tCtx.beginPath();
-              tCtx.roundRect(knobLeft, centerY - curKnobH / 2, curKnobW, curKnobH, curKnobR);
+              tCtx.roundRect(knobLeft, centerY - curKnobH / 2, Math.max(1, curKnobW), Math.max(1, curKnobH), Math.max(0, curKnobR));
               tCtx.fillStyle = '#ffffff';
               tCtx.fill();
             }
@@ -3499,7 +3589,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
     }
-    renderLoop(0);
+    animationFrameId = requestAnimationFrame(renderLoop);
   }
 
   function handleVisibilityChange(visible) {
@@ -3775,7 +3865,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateRightPanelBanner(thumbUrl) {
     const banner = document.getElementById('right-panel-banner');
     if (!banner) return;
-    if (!getAdv('banners', true) || !getAdv('track_banners', true)) {
+    if (!getAdv('banners', true) || !getAdv('track_banners', false)) {
       banner.style.display = 'none';
       if (state.isTvKaraokeOpen) syncTvBanner();
       return;
@@ -4214,21 +4304,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   let preloadedTrack10sFired = false;
+  let preloadAudioEl = null;
+
+  function warmUpNextAudioBuffer(streamUrl) {
+    if (!streamUrl || typeof streamUrl !== 'string' || streamUrl.includes('.m3u8')) return;
+    fetch(streamUrl, { headers: { 'Range': 'bytes=0-262143' } }).catch(() => {});
+  }
+
   async function preloadNextTrackStream() {
     if (!state.queue || state.queueIndex < 0) return;
     const nextTrack = state.queue[state.queueIndex + 1];
-    if (nextTrack && !nextTrack._preloadedStreamUrl && !nextTrack.isCached && nextTrack.platform !== 'local') {
-      const qQuality = encodeURIComponent(localStorage.getItem('riff_audio_quality') || 'medium');
-      const qFallback = encodeURIComponent(nextTrack.searchQuery || ((nextTrack.artist ? nextTrack.artist + ' - ' : '') + nextTrack.title));
-      const fetchUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?id=${encodeURIComponent(nextTrack.id || '')}&url=${encodeURIComponent(nextTrack.url || '')}&platform=${encodeURIComponent(nextTrack.platform || 'youtube')}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}&q=${qFallback}&quality=${qQuality}`;
-      try {
-        const res = await fetch(fetchUrl);
-        const data = await res.json();
-        if (data && data.success && data.streamUrl) {
-          nextTrack._preloadedStreamUrl = data.streamUrl;
-          nextTrack._preloadedStreamQuality = localStorage.getItem('riff_audio_quality') || 'medium';
+    if (!nextTrack || nextTrack.isCached || nextTrack.platform === 'local') return;
+    const curQuality = localStorage.getItem('riff_audio_quality') || 'medium';
+    if (nextTrack._preloadedStreamUrl && nextTrack._preloadedStreamQuality === curQuality) {
+      warmUpNextAudioBuffer(nextTrack._preloadedStreamUrl);
+      return;
+    }
+    try {
+      const rawId = String(nextTrack.id || '').trim();
+      const isRealYtId = /^[a-zA-Z0-9_-]{11}$/.test(rawId) && !/^(cand_|dz_|it_|sp_|ym_|alb_|local_|track_)/i.test(rawId);
+      if (!isRealYtId && nextTrack.platform !== 'soundcloud' && (nextTrack.title || nextTrack.artist)) {
+        const q = ((nextTrack.artist ? nextTrack.artist + ' - ' : '') + (nextTrack.title || '')).trim();
+        if (q) {
+          const sRes = await fetch(`http://127.0.0.1:${state.serverPort}/api/search?q=${encodeURIComponent(q)}&platform=ytmusic&limit=1`);
+          const sData = await sRes.json();
+          const hit = sData && Array.isArray(sData.tracks) && sData.tracks[0];
+          if (hit && hit.id && /^[a-zA-Z0-9_-]{11}$/.test(hit.id)) {
+            nextTrack.id = hit.id;
+            nextTrack.url = hit.url || `https://www.youtube.com/watch?v=${hit.id}`;
+            if (!nextTrack.thumbnail && hit.thumbnail) nextTrack.thumbnail = hit.thumbnail;
+          }
         }
-      } catch (_) {}
+      }
+      const qQuality = encodeURIComponent(curQuality);
+      const qFallback = encodeURIComponent(nextTrack.searchQuery || ((nextTrack.artist ? nextTrack.artist + ' - ' : '') + (nextTrack.title || '')));
+      const fetchUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?id=${encodeURIComponent(nextTrack.id || '')}&url=${encodeURIComponent(nextTrack.url || '')}&platform=${encodeURIComponent(nextTrack.platform || 'ytmusic')}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&q=${qFallback}&quality=${qQuality}`;
+      const res = await fetch(fetchUrl);
+      const data = await res.json();
+      if (data && data.success && data.streamUrl) {
+        nextTrack._preloadedStreamUrl = data.streamUrl;
+        nextTrack._preloadedStreamQuality = curQuality;
+        warmUpNextAudioBuffer(data.streamUrl);
+      }
+    } catch (_) {}
+  }
+
+  let cfTailAudio = null;
+  let cfTailTimer = null;
+  function stopCrossfadeTail() {
+    if (cfTailTimer) { clearInterval(cfTailTimer); cfTailTimer = null; }
+    if (cfTailAudio) {
+      try { cfTailAudio.pause(); cfTailAudio.removeAttribute('src'); cfTailAudio.load(); } catch (_) {}
+    }
+  }
+  function startCrossfadeTailFromCurrent(fadeSec) {
+    if (!el.nativeAudio || !el.nativeAudio.src || el.nativeAudio.paused) return;
+    const src = el.nativeAudio.src;
+    if (src.startsWith('blob:')) return;
+    stopCrossfadeTail();
+    if (!cfTailAudio) {
+      cfTailAudio = new Audio();
+      cfTailAudio.crossOrigin = 'anonymous';
+    }
+    const startVol = state.isMuted ? 0 : Math.max(0, Math.min(1, state.volume * state.volume * (state.audioSettings?.volume || 1)));
+    if (startVol <= 0.01) return;
+    try {
+      cfTailAudio.src = src;
+      cfTailAudio.playbackRate = el.nativeAudio.playbackRate || 1;
+      cfTailAudio.currentTime = el.nativeAudio.currentTime || 0;
+      cfTailAudio.volume = startVol;
+      if (currentAudioOutputDeviceId && currentAudioOutputDeviceId !== 'default' && typeof cfTailAudio.setSinkId === 'function') {
+        cfTailAudio.setSinkId(currentAudioOutputDeviceId).catch(() => {});
+      }
+      cfTailAudio.play().catch(() => {});
+      const t0 = performance.now();
+      const durMs = Math.max(500, fadeSec * 1000);
+      cfTailTimer = setInterval(() => {
+        const p = Math.min(1, (performance.now() - t0) / durMs);
+        cfTailAudio.volume = Math.max(0, startVol * Math.cos(p * Math.PI * 0.5));
+        if (p >= 1) stopCrossfadeTail();
+      }, 40);
+    } catch (_) {
+      stopCrossfadeTail();
     }
   }
 
@@ -4259,6 +4416,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       delete track._preloadedStreamQuality;
     }
     prioritizeTrackStream(track);
+    state.isLoadingTrack = true;
     if (el.nativeAudio && !el.nativeAudio.paused) {
       try { el.nativeAudio.pause(); } catch (_) {}
     }
@@ -4420,6 +4578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           });
         } else {
+          if (preloadAudioEl && track._preloadedStreamUrl && preloadAudioEl.src !== track._preloadedStreamUrl) { try { preloadAudioEl.removeAttribute('src'); preloadAudioEl.load(); } catch (_) {} }
           el.nativeAudio.src = track._preloadedStreamUrl;
           playSmooth();
         }
@@ -4491,12 +4650,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         });
       } else {
+        if (preloadAudioEl && track._preloadedStreamUrl && preloadAudioEl.src !== track._preloadedStreamUrl) { try { preloadAudioEl.removeAttribute('src'); preloadAudioEl.load(); } catch (_) {} }
         el.nativeAudio.src = data.streamUrl;
         playSmooth();
       }
 
       applyAudioSettings();
     } catch (err) {
+      state.isLoadingTrack = false;
       if (err.name === 'AbortError' && !didTimeoutAbort) return;
       if (currentToken === state.loadToken) {
         console.warn('Track playback notice:', err);
@@ -4811,10 +4972,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       return ' ';
     }).replace(/\s{2,}/g, ' ').trim();
+    if (!mainText) {
+      return { mainText: str, parenText: '', startRatio: 0.7, endRatio: 1.0 };
+    }
     const startRatio = firstStart >= 0 ? Math.max(0.05, Math.min(0.85, firstStart / totalLen)) : 0.7;
     const endRatio = lastEnd > firstStart ? Math.max(startRatio + 0.12, Math.min(1.0, lastEnd / totalLen)) : 1.0;
     return {
-      mainText: mainText || str,
+      mainText,
       parenText: parens.length > 0 ? parens.join(' ') : '',
       startRatio,
       endRatio
@@ -5291,7 +5455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const lineDur = Math.max(0.5, nextLineTime - currentLineTime);
           const progress = Math.min(Math.max((matchTime - currentLineTime) / lineDur, 0), 0.999);
           const wordSpans = activeEl.querySelectorAll('.lyric-word');
-          const currentWordIndex = Math.floor(progress * wordSpans.length);
+          const currentWordIndex = computeEstimatedWordIndex(wordSpans, matchTime, activeIndex);
           wordSpans.forEach((wSpan, wIdx) => {
             const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
             if (wIdx < currentWordIndex) {
@@ -5345,11 +5509,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     '[data-i18n]',
     '.setting-name',
     '.setting-hint',
+    '.setting-item-top div > span:not(.setting-name):not(.riff-beta-badge)',
+    '.setting-item > div:not([class]):not(:has(*))',
+    '.setting-hints > span',
+    '.customizer-box > div:first-child',
     '.settings-section-title',
     '.rail-drawer-title',
     '.home-pane-label',
-    '.view-header h2',
-    '.view-subtitle',
     '.dialog-header h3',
     '.modal-title',
     '.btn-pill-primary > span',
@@ -5361,95 +5527,350 @@ document.addEventListener('DOMContentLoaded', async () => {
     'button.btn-text:not(:has(*))',
     'button.btn-text-error:not(:has(*))',
     'button.theme-mode-btn:not(:has(*))',
-    'h2',
-    'h3',
-    'p',
-    'label:not(:has(*))',
-    '.setting-item-top > span:not([class])',
-    '.setting-hints > span:not([class])',
-    '.setting-item > div:not([class]):not(:has(*))',
-    '.setting-value',
-    '.m3-dropdown-label',
-    '.m3-dropdown-option:not(:has(*))',
-    '.m3-dropdown-trigger > span:not([class])',
-    '.sp-modes button',
+    '.settings-nav-btn > span',
+    '.sb-horiz-tab',
+    '.np-queue-tab',
+    '.search-chip',
     '.audio-tab > span:not([class])',
     '.artist-horiz-tab > span:not([class])',
-    '.lyrics-action-btn > span:not([class])',
-    '.lyrics-mode-btn > span:not([class])',
-    '.cache-stat-label > span:not([class])',
-    '.playlist-type-badge',
-    '.artist-about-title',
-    '.sp-card-title',
-    '.sp-card-sub',
-    '.album-meta-line',
     '.sleep-timer-hint',
     '.hq-label',
-    '.sync-mode-badge',
-    '.sync-tip-pill',
-    '.sync-progress-text',
     '.cpm-import-label',
     '.download-section-label',
-    '.download-preview-title',
-    '.download-preview-artist',
-    '.download-caption-path',
-    '.css-editor-title',
-    '.css-editor-hint',
     '.tvk-label',
-    '.tvk-pill-btn',
-    '.tvk-actions button',
-    '.right-panel-artist',
-    '.dialog-card span:not([class])'
+    '.tvk-pill-btn'
   ].join(', ');
 
+  const DYNAMIC_EXCLUDE_SEL = [
+    '#ui-lang-dropdown', '#tr-lang-dropdown', '#langMenu',
+    '#right-panel-title', '#right-panel-artist', '.right-panel-meta',
+    '#playbar-title', '#playbar-artist', '.playbar-left .track-meta',
+    '#tv-karaoke-title', '#tv-karaoke-artist', '.tv-karaoke-meta',
+    '#playlist-detail-title', '#playlist-detail-desc', '#playlist-detail-count',
+    '#album-detail-title', '#album-detail-artist', '#album-detail-count',
+    '#artist-profile-name', '#artist-profile-bio', '#artist-fans-line', '#artist-tracks-count',
+    '#my-wave-focused-title', '#my-wave-focused-artist', '#jump-focused-title', '#jump-focused-artist',
+    '#favorites-subtitle', '#local-subtitle', '.setting-value', '.time-label',
+    '.track-row', '.sp-card', '.sb-lib-row', '.np-queue-row', '#lyrics-container',
+    '.riff-hero-title', '.settings-version-tag', '#about-version'
+  ].join(', ');
+
+  const PROTECTED_BRAND_TEXTS = new Set([
+    'riff', 'youtube', 'youtube music', 'soundcloud', 'spotify', 'apple music',
+    'deezer', 'yandex music', 'discord rpc', 'last.fm', 'lrclib', 'musixmatch',
+    'kugou lrc', 'netease', 'genius', 'google sans', 'sf pro', 'lucide crisp',
+    'solar duotone', 'yt-dlp', 'ffmpeg', 'beta', 'new', 'mp3', 'flac', 'm4a', 'opus', 'wav'
+  ]);
+
   function isI18nFixed(element) {
-    return element.hasAttribute('data-i18n-fixed');
+    if (!element || element.hasAttribute('data-i18n-fixed')) return true;
+    if (element.closest(DYNAMIC_EXCLUDE_SEL)) return true;
+    const raw = (element.dataset.i18nEn || element.textContent || '').trim();
+    if (!raw) return true;
+    if (PROTECTED_BRAND_TEXTS.has(raw.toLowerCase())) return true;
+    if (/^v?\d+\.\d+(\.\d+)?$/i.test(raw)) return true;
+    return false;
   }
 
-  const savedUiLang = getSupportedUiLanguage(localStorage.getItem('riff_ui_lang') || 'en');
-  localStorage.setItem('riff_ui_lang', savedUiLang);
-  syncDocumentDirection(savedUiLang);
-  let i18nApplyVersion = 0;
-  if (savedUiLang !== 'en') {
-    applyI18n(savedUiLang);
-    setTimeout(() => applyI18n(savedUiLang), 1500);
+  const BUILTIN_UI_DICT = {
+    ru: {
+      'Search tracks, artists, or albums...': 'Поиск треков, артистов или альбомов...',
+      'Search settings...': 'Поиск настроек...',
+      'Search favorites...': 'Поиск в избранном...',
+      'Search my files...': 'Поиск в моих файлах...',
+      'Search in playlist...': 'Поиск в плейлисте...',
+      'For you': 'Для вас',
+      'Radio': 'Радио',
+      'Jump back in': 'Недавно слушали',
+      'Home': 'Главная',
+      'Trending now': 'Сейчас в тренде',
+      'Favorite artists': 'Любимые артисты',
+      'Liked songs': 'Любимые треки',
+      'Favorites': 'Избранное',
+      'Albums': 'Альбомы',
+      'My files': 'Мои файлы',
+      'History': 'История',
+      'Queue': 'Очередь',
+      'Recently played': 'Недавние',
+      'Now playing': 'Сейчас играет',
+      'Next up': 'Далее в очереди',
+      'Playlists': 'Плейлисты',
+      'Presets': 'Пресеты',
+      'Settings': 'Настройки',
+      'All': 'Все',
+      'Songs': 'Треки',
+      'Artists': 'Артисты',
+      'Tracks': 'Треки',
+      'Popular Songs': 'Популярные треки',
+      'Show all': 'Показать все',
+      'Show less': 'Свернуть',
+      'Follow': 'Подписаться',
+      'Following': 'Вы подписаны',
+      'Block': 'Заблокировать',
+      'Blocked': 'Заблокирован',
+      'About the artist': 'Об исполнителе',
+      'Play': 'Слушать',
+      'Download all': 'Скачать всё',
+      'Export as JSON': 'Экспорт в JSON',
+      'Clear history': 'Очистить историю',
+      'Clear queue': 'Очистить очередь',
+      'Add files': 'Добавить файлы',
+      'Add folder': 'Добавить папку',
+      'Manual order': 'Вручную',
+      'Date added (newest)': 'Сначала новые',
+      'Date added (oldest)': 'Сначала старые',
+      'Do you like these tracks?': 'Вам нравятся эти треки?',
+      'Interface': 'Интерфейс',
+      'Theme': 'Тема',
+      'Banners': 'Баннеры',
+      'Integrations': 'Интеграции',
+      'Storage': 'Хранилище',
+      'Advanced': 'Расширенные',
+      'About': 'О приложении',
+      'Custom themes': 'Кастомные темы',
+      'Plugins': 'Плагины',
+      'Account': 'Аккаунт',
+      'Display name': 'Отображаемое имя',
+      'Reset avatar': 'Сбросить аватар',
+      'Account backup (.rfacc)': 'Резервная копия аккаунта (.rfacc)',
+      'Export Riff account (.rfacc)': 'Экспорт аккаунта Riff (.rfacc)',
+      'Import Riff account (.rfacc)': 'Импорт аккаунта Riff (.rfacc)',
+      'Save your profile, playlists, favorites, history, and settings to a file': 'Сохраните профиль, плейлисты, избранное, историю и настройки в файл',
+      'Restore your entire Riff account from a .rfacc backup file': 'Восстановите весь аккаунт Riff из файла резервной копии .rfacc',
+      'Connected services & integrations': 'Подключённые сервисы и интеграции',
+      'Manage Spotify, YouTube, Last.fm, Yandex Music, and Discord RPC': 'Управление Spotify, YouTube, Last.fm, Яндекс Музыкой и Discord RPC',
+      'Open Integrations': 'Открыть интеграции',
+      'Interface language': 'Язык интерфейса',
+      'Hide top titlebar': 'Скрыть верхнюю панель окна',
+      'Hide the window titlebar and reveal it on top edge hover': 'Скрывает заголовок окна и показывает его при наведении на верхний край',
+      'Auto-hide timeline timestamps': 'Автоскрытие времени трека',
+      'Fade out current time and duration on the player bar when idle': 'Плавно скрывать время трека в нижней панели в покое',
+      'UI scale': 'Масштаб интерфейса',
+      'Font scale': 'Масштаб шрифта',
+      'Interface font': 'Шрифт интерфейса',
+      'Icon style': 'Стиль иконок',
+      'Choose the icon pack used across navigation and player controls': 'Выберите набор иконок для навигации и плеера',
+      'Position of searchbar': 'Позиция строки поиска',
+      'Search engine': 'Поисковый движок',
+      'Show YouTube platform': 'Показывать платформу YouTube',
+      'Not recommended: regular YouTube includes non-music videos and loads slower than YouTube Music': 'Не рекомендуется: на обычном YouTube много видео не с музыкой и треки грузятся дольше',
+      'Compact engine buttons': 'Компактные кнопки платформ',
+      'Hide engine buttons': 'Скрыть кнопки платформ',
+      'Corner radius': 'Скругление углов',
+      'Interface opacity': 'Прозрачность интерфейса',
+      'Text opacity': 'Прозрачность текста',
+      'Floating panels blur': 'Размытие всплывающих панелей',
+      'No-Hand cursor': 'Обычный курсор вместо руки',
+      'Show wave visualizer in bottom bar': 'Волновой визуализатор в нижней панели',
+      'Playbar visualizer position': 'Позиция визуализатора',
+      'Compact': 'Компактный',
+      'Behind bar': 'За панелью',
+      'Connected liquid visualizer': 'Слитный жидкий визуализатор',
+      'Shaped cover in the bottom bar': 'Фигурная обложка в нижней панели',
+      'Shaped covers in Now Playing & Karaoke': 'Фигурные обложки в Now Playing и Караоке',
+      'Show explicit tag [E] on tracks': 'Показывать метку [E] на треках',
+      'Performance mode': 'Режим производительности',
+      'Customize sidebar & home layout': 'Настройка сайдбара и главной',
+      'Theme mode': 'Режим темы',
+      'Light': 'Светлая',
+      'Dark': 'Тёмная',
+      'Auto (album)': 'Авто (обложка)',
+      'Palette style': 'Стиль палитры',
+      'Accent color': 'Акцентный цвет',
+      'Intensity': 'Насыщенность',
+      'Apply intensity to background': 'Применять насыщенность к фону',
+      'Tint background and surface panels with the accent color and intensity': 'Окрашивать фон и панели в акцентный цвет',
+      'Brightness': 'Яркость',
+      'Highlight buttons': 'Выделять главные кнопки цветом',
+      'Home button icon': 'Иконка кнопки Домой',
+      'App icon on Home button': 'Иконка приложения на кнопке Домой',
+      'Enable banners': 'Включить баннеры',
+      'Track banners': 'Баннеры треков',
+      'Cover background': 'Фон из обложки трека',
+      'Show artists in search': 'Показывать артистов в поиске',
+      'Show My files tab': 'Показывать вкладку Мои файлы',
+      'Show Albums tab': 'Показывать вкладку Альбомы',
+      'Smooth preset transitions': 'Плавный переход пресетов',
+      'Save sound settings': 'Сохранять настройки звука',
+      'Wavy progress bar': 'Волнистый прогресс-бар',
+      'Progress bar knob': 'Ползунок прогресс-бара',
+      'Progress bar background': 'Фон прогресс-бара',
+      'Classic rounded track cards': 'Классические скругленные карточки треков',
+      'Audio output device': 'Устройство вывода звука',
+      'System default': 'По умолчанию в системе',
+      'Crossfade': 'Кроссфейд',
+      'Lyrics translation': 'Перевод текста песен',
+      'Translation language': 'Язык перевода',
+      'Auto-translate': 'Автоперевод',
+      'Lyrics animation': 'Анимация текста песен',
+      'Lyrics source': 'Источник текста песен',
+      'Clear cache': 'Очистить кэш',
+      'Required tools': 'Необходимые компоненты',
+      'Offline library': 'Офлайн-библиотека',
+      'Music folder': 'Папка с музыкой',
+      'Download folder': 'Папка загрузок',
+      'Check for updates': 'Проверить обновления',
+      'Keyboard shortcuts': 'Горячие клавиши',
+      'Diagnostics': 'Диагностика',
+      'Logs': 'Логи',
+      'Create playlist': 'Создать плейлист',
+      'Cancel': 'Отмена',
+      'Create': 'Создать',
+      'Save': 'Сохранить',
+      'Close': 'Закрыть',
+      'Reset': 'Сбросить',
+      'Import': 'Импорт',
+      'Export': 'Экспорт',
+      'Enhancer': 'Улучшение',
+      'Speed & Pitch': 'Скорость и тон',
+      'Audio FX': 'Эффекты',
+      'Equalizer': 'Эквалайзер',
+      'Sleep': 'Таймер сна',
+      'Sleep timer': 'Таймер сна',
+      'Reset audio settings': 'Сбросить настройки звука',
+      'Pin to sidebar': 'Закрепить в сайдбаре',
+      'Unpin from sidebar': 'Открепить из сайдбара',
+      'Add to playlist': 'Добавить в плейлист',
+      'Add to queue': 'Добавить в очередь',
+      'Share link': 'Поделиться ссылкой',
+      'Download': 'Скачать',
+      'Change banner': 'Изменить баннер',
+      'Rename track': 'Переименовать трек',
+      'Block track': 'Заблокировать трек',
+      'Block artist': 'Заблокировать артиста'
+    },
+    uk: {
+      'Search tracks, artists, or albums...': 'Пошук треків, артистів або альбомів...',
+      'Search settings...': 'Пошук налаштувань...',
+      'Search favorites...': 'Пошук в обраному...',
+      'Search my files...': 'Пошук у моїх файлах...',
+      'Search in playlist...': 'Пошук у плейлисті...',
+      'For you': 'Для вас',
+      'Radio': 'Радіо',
+      'Jump back in': 'Нещодавно слухали',
+      'Home': 'Головна',
+      'Trending now': 'Зараз у тренді',
+      'Favorite artists': 'Улюблені виконавці',
+      'Liked songs': 'Улюблені треки',
+      'Favorites': 'Обране',
+      'Albums': 'Альбоми',
+      'My files': 'Мої файли',
+      'History': 'Історія',
+      'Queue': 'Черга',
+      'Recently played': 'Нещодавні',
+      'Now playing': 'Зараз грає',
+      'Next up': 'Далі в черзі',
+      'Playlists': 'Плейлисти',
+      'Presets': 'Пресети',
+      'Settings': 'Налаштування',
+      'All': 'Усі',
+      'Songs': 'Треки',
+      'Artists': 'Артисти',
+      'Tracks': 'Треки',
+      'Popular Songs': 'Популярні треки',
+      'Show all': 'Показати всі',
+      'Show less': 'Згорнути',
+      'Follow': 'Підписатися',
+      'Following': 'Ви підписані',
+      'Block': 'Заблокувати',
+      'Blocked': 'Заблоковано',
+      'About the artist': 'Про виконавця',
+      'Play': 'Слухати',
+      'Download all': 'Завантажити все',
+      'Export as JSON': 'Експорт у JSON',
+      'Clear history': 'Очистити історію',
+      'Clear queue': 'Очистити чергу',
+      'Add files': 'Додати файли',
+      'Add folder': 'Додати папку',
+      'Do you like these tracks?': 'Вам подобаються ці треки?',
+      'Interface': 'Інтерфейс',
+      'Theme': 'Тема',
+      'Banners': 'Банери',
+      'Integrations': 'Інтеграції',
+      'Storage': 'Сховище',
+      'Advanced': 'Розширені',
+      'About': 'Про застосунок',
+      'Custom themes': 'Власні теми',
+      'Plugins': 'Плагіни',
+      'Account': 'Акаунт',
+      'Display name': 'Імʼя користувача',
+      'Reset avatar': 'Скинути аватар',
+      'Account backup (.rfacc)': 'Резервна копія акаунту (.rfacc)',
+      'Export Riff account (.rfacc)': 'Експорт акаунту Riff (.rfacc)',
+      'Import Riff account (.rfacc)': 'Імпорт акаунту Riff (.rfacc)',
+      'Save your profile, playlists, favorites, history, and settings to a file': 'Збережіть профіль, плейлісти, улюблене, історію та налаштування у файл',
+      'Restore your entire Riff account from a .rfacc backup file': 'Відновіть увесь акаунт Riff з файлу резервної копії .rfacc',
+      'Connected services & integrations': 'Підключені сервіси та інтеграції',
+      'Manage Spotify, YouTube, Last.fm, Yandex Music, and Discord RPC': 'Керування Spotify, YouTube, Last.fm, Яндекс Музикою та Discord RPC',
+      'Open Integrations': 'Відкрити інтеграції',
+      'Interface language': 'Мова інтерфейсу',
+      'Hide top titlebar': 'Приховати верхню панель вікна',
+      'Auto-hide timeline timestamps': 'Автоприховування часу треку',
+      'UI scale': 'Масштаб інтерфейсу',
+      'Font scale': 'Масштаб шрифту',
+      'Interface font': 'Шрифт інтерфейсу',
+      'Icon style': 'Стиль іконок',
+      'Position of searchbar': 'Позиція рядка пошуку',
+      'Search engine': 'Пошукова система',
+      'Corner radius': 'Заокруглення кутів',
+      'Interface opacity': 'Прозорість інтерфейсу',
+      'Floating panels blur': 'Розмиття спливаючих панелей',
+      'Performance mode': 'Режим продуктивності',
+      'Theme mode': 'Режим теми',
+      'Light': 'Світла',
+      'Dark': 'Темна',
+      'Auto (album)': 'Авто (обкладинка)',
+      'Accent color': 'Акцентний колір',
+      'Intensity': 'Насиченість',
+      'Brightness': 'Яскравість',
+      'Check for updates': 'Перевірити оновлення',
+      'Keyboard shortcuts': 'Гарячі клавіші',
+      'Diagnostics': 'Діагностика',
+      'Logs': 'Логи',
+      'Create playlist': 'Створити плейлист',
+      'Cancel': 'Скасувати',
+      'Create': 'Створити',
+      'Save': 'Зберегти',
+      'Close': 'Закрити',
+      'Reset': 'Скинути',
+      'Pin to sidebar': 'Закріпити в сайдбарі',
+      'Unpin from sidebar': 'Відкріпити з сайдбару'
+    }
+  };
+
+  const REVERSE_TO_EN = {};
+  for (const l of ['ru', 'uk']) {
+    for (const [enK, trV] of Object.entries(BUILTIN_UI_DICT[l])) {
+      REVERSE_TO_EN[trV] = enK;
+    }
   }
 
   function collectI18n() {
     const list = new Set();
     document.querySelectorAll(AUTO_I18N_SELECTORS).forEach(elNode => {
       if (isI18nFixed(elNode)) return;
-      if (!elNode.dataset.i18nOrig) {
-        elNode.dataset.i18nOrig = elNode.textContent.trim();
+      if (!elNode.dataset.i18nEn) {
+        const raw = elNode.textContent.trim();
+        elNode.dataset.i18nEn = REVERSE_TO_EN[raw] || raw;
       }
-      if (!elNode.dataset.origText) {
-        elNode.dataset.origText = elNode.dataset.i18nOrig;
-      }
-      const val = elNode.dataset.i18nOrig || elNode.dataset.origText;
-      if (val) list.add(val);
+      elNode.dataset.i18nOrig = elNode.dataset.i18nEn;
+      if (elNode.dataset.i18nEn) list.add(elNode.dataset.i18nEn);
     });
     document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(input => {
       if (isI18nFixed(input)) return;
-      if (!input.dataset.origPlaceholder) {
-        input.dataset.origPlaceholder = input.placeholder;
+      if (!input.dataset.i18nEnPlaceholder) {
+        const raw = input.placeholder.trim();
+        input.dataset.i18nEnPlaceholder = REVERSE_TO_EN[raw] || raw;
       }
-      if (input.dataset.origPlaceholder) list.add(input.dataset.origPlaceholder);
-    });
-    document.querySelectorAll('[data-i18n-attr]').forEach(el => {
-      if (isI18nFixed(el)) return;
-      const attr = el.getAttribute('data-i18n-attr') || 'placeholder';
-      if (!el._i18n_orig_attrs) el._i18n_orig_attrs = {};
-      if (!el._i18n_orig_attrs[attr]) {
-        el._i18n_orig_attrs[attr] = el.getAttribute(attr) || '';
-      }
-      if (el._i18n_orig_attrs[attr]) list.add(el._i18n_orig_attrs[attr]);
+      input.dataset.origPlaceholder = input.dataset.i18nEnPlaceholder;
     });
     return Array.from(list);
   }
 
+  let i18nApplyVersion = 0;
   async function applyI18n(lang) {
     const applyVersion = ++i18nApplyVersion;
-    lang = getSupportedUiLanguage(lang || localStorage.getItem('riff_ui_lang') || 'en');
+    lang = String(lang || localStorage.getItem('riff_ui_lang') || 'en').trim();
     syncDocumentDirection(lang);
     localStorage.setItem('riff_ui_lang', lang);
 
@@ -5459,147 +5880,101 @@ document.addEventListener('DOMContentLoaded', async () => {
       uiLangLabel.textContent = `${found.flag} ${found.name} (${found.code})`;
     }
 
+    const texts = collectI18n();
+
+    if (!state.currentTrack) {
+      const noTrackStr = lang === 'ru' ? 'Ничего не играет' : (lang === 'uk' ? 'Нічого не грає' : 'No track playing');
+      const selTrackStr = lang === 'ru' ? 'Выберите трек для прослушивания' : (lang === 'uk' ? 'Оберіть трек для прослуховування' : 'Select a track to listen');
+      if (el.playbarTitle) el.playbarTitle.textContent = noTrackStr;
+      if (el.playbarArtist) el.playbarArtist.textContent = selTrackStr;
+      if (el.rightPanelTitle) el.rightPanelTitle.textContent = noTrackStr;
+      if (el.rightPanelArtist) el.rightPanelArtist.textContent = selTrackStr;
+    }
+
     if (lang === 'en') {
       document.querySelectorAll(AUTO_I18N_SELECTORS).forEach(elNode => {
         if (isI18nFixed(elNode)) return;
-        if (elNode.dataset.i18nOrig) {
-          elNode.textContent = elNode.dataset.i18nOrig;
-          elNode.dataset.i18nShown = elNode.textContent;
-        } else if (elNode.dataset.origText) {
-          elNode.textContent = elNode.dataset.origText;
-          elNode.dataset.i18nShown = elNode.textContent;
-        } else if (elNode._i18n_orig) elNode.textContent = elNode._i18n_orig;
+        const enKey = elNode.dataset.i18nEn;
+        if (enKey && elNode.textContent !== enKey) elNode.textContent = enKey;
       });
       document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(input => {
         if (isI18nFixed(input)) return;
-        if (input.dataset.origPlaceholder) input.placeholder = input.dataset.origPlaceholder;
-      });
-      document.querySelectorAll('[data-i18n-attr]').forEach(el => {
-        if (isI18nFixed(el)) return;
-        const attr = el.getAttribute('data-i18n-attr') || 'placeholder';
-        if (el._i18n_orig_attrs && el._i18n_orig_attrs[attr]) {
-          el.setAttribute(attr, el._i18n_orig_attrs[attr]);
-        }
+        const enPh = input.dataset.i18nEnPlaceholder;
+        if (enPh && input.placeholder !== enPh) input.placeholder = enPh;
       });
       return;
     }
 
-    if (!i18nSessionMap.has(lang)) {
-      i18nSessionMap.set(lang, new Map());
-    }
+    if (!i18nSessionMap.has(lang)) i18nSessionMap.set(lang, new Map());
     const dict = i18nSessionMap.get(lang);
-
-    if (!dict.size) {
-      try {
-        const stored = JSON.parse(localStorage.getItem('riff_i18n_' + lang) || '{}');
-        Object.keys(stored).forEach(k => { if (stored[k] && !dict.has(k)) dict.set(k, stored[k]); });
-      } catch (_) {}
+    const staticDict = BUILTIN_UI_DICT[lang] || {};
+    for (const [k, v] of Object.entries(staticDict)) {
+      dict.set(k, v);
     }
 
-    const texts = collectI18n();
-    const commonToasts = [
-      'Save at least 5 tracks to tune For you',
-      'Playing For you',
-      'Track added to favorites',
-      'Track removed from favorites',
-      'Copied to clipboard',
-      'Downloaded track',
-      'Download failed',
-      'Playlist created',
-      'Playlist deleted'
-    ];
-    for (const ct of commonToasts) {
-      if (!texts.includes(ct)) texts.push(ct);
-    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('riff_i18n_' + lang) || '{}');
+      for (const [k, v] of Object.entries(stored)) {
+        if (v && typeof v === 'string' && !/https?:\/\/|linux\.do/i.test(v) && !dict.has(k)) {
+          dict.set(k, v);
+        }
+      }
+    } catch (_) {}
+
+    const renderDictToDom = () => {
+      document.querySelectorAll(AUTO_I18N_SELECTORS).forEach(elNode => {
+        if (isI18nFixed(elNode)) return;
+        const enKey = elNode.dataset.i18nEn;
+        if (!enKey) return;
+        const next = dict.get(enKey) || enKey;
+        if (elNode.textContent !== next) elNode.textContent = next;
+      });
+      document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(input => {
+        if (isI18nFixed(input)) return;
+        const enPh = input.dataset.i18nEnPlaceholder;
+        if (!enPh) return;
+        const next = dict.get(enPh) || enPh;
+        if (input.placeholder !== next) input.placeholder = next;
+      });
+    };
+
+    renderDictToDom();
 
     const missing = texts.filter(s => !dict.has(s));
     if (missing.length > 0) {
       try {
         const port = state.serverPort || 38472;
+        const deeplKey = localStorage.getItem('riff_deepl_api_key') || '';
         const res = await fetch(`http://127.0.0.1:${port}/api/i18n-batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target: lang, texts: missing })
+          body: JSON.stringify({ target: lang, texts: missing, apiKey: deeplKey })
         });
         const data = await res.json();
         if (applyVersion !== i18nApplyVersion) return;
         if (data && data.success && Array.isArray(data.translations)) {
           missing.forEach((str, i) => {
-            if (data.translations[i] && data.translations[i] !== str) {
-              dict.set(str, data.translations[i]);
+            const tr = (data.translations[i] || '').trim();
+            if (tr && !/https?:\/\/|linux\.do/i.test(tr)) {
+              dict.set(str, tr);
             }
           });
+          Object.entries(staticDict).forEach(([k, v]) => dict.set(k, v));
+          const toPersist = {};
+          for (const [k, v] of dict.entries()) toPersist[k] = v;
+          try { localStorage.setItem('riff_i18n_' + lang, JSON.stringify(toPersist)); } catch (_) {}
+          renderDictToDom();
         }
-      } catch (e) {
-        if (applyVersion !== i18nApplyVersion) return;
-        console.warn('applyI18n fetch error:', e);
-      }
-      try {
-        const toPersist = {};
-        for (const [k, v] of dict.entries()) {
-          if (v && v !== k) toPersist[k] = v;
-        }
-        localStorage.setItem('riff_i18n_' + lang, JSON.stringify(toPersist));
       } catch (_) {}
     }
-
-    if (applyVersion !== i18nApplyVersion) return;
-    const translations = {};
-    for (const [k, v] of dict.entries()) {
-      translations[k] = v;
-    }
-
-    document.querySelectorAll(AUTO_I18N_SELECTORS).forEach(elNode => {
-      if (isI18nFixed(elNode)) return;
-      if (!elNode.dataset.i18nOrig) elNode.dataset.i18nOrig = elNode.textContent.trim();
-      if (!elNode.dataset.origText) elNode.dataset.origText = elNode.dataset.i18nOrig;
-      const key = elNode.dataset.i18nOrig || elNode.dataset.origText;
-      if (!key) return;
-      if (elNode.dataset.i18nShown !== undefined && elNode.textContent !== elNode.dataset.i18nShown) return;
-      const next = translations[key] || key;
-      if (elNode.textContent !== next) elNode.textContent = next;
-      elNode.dataset.i18nShown = next;
-    });
-
-    document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(input => {
-      if (isI18nFixed(input)) return;
-      if (!input.dataset.origPlaceholder) input.dataset.origPlaceholder = input.placeholder;
-      if (input.dataset.origPlaceholder) {
-        const next = translations[input.dataset.origPlaceholder] || input.dataset.origPlaceholder;
-        if (input.placeholder !== next) input.placeholder = next;
-      }
-    });
-
-    document.querySelectorAll('[data-i18n-attr]').forEach(el => {
-      if (isI18nFixed(el)) return;
-      const attr = el.getAttribute('data-i18n-attr') || 'placeholder';
-      if (!el._i18n_orig_attrs) el._i18n_orig_attrs = {};
-      if (!el._i18n_orig_attrs[attr]) el._i18n_orig_attrs[attr] = el.getAttribute(attr) || '';
-      const origVal = el._i18n_orig_attrs[attr];
-      if (origVal && translations[origVal]) {
-        el.setAttribute(attr, translations[origVal]);
-      }
-    });
   }
   window.collectI18n = collectI18n;
   window.applyI18n = applyI18n;
+  window.BUILTIN_UI_DICT = BUILTIN_UI_DICT;
+  function scheduleI18nApply() {}
 
-  if (savedUiLang !== 'en') {
-    setTimeout(() => applyI18n(savedUiLang).catch(() => {}), 4000);
-    setTimeout(() => applyI18n(savedUiLang).catch(() => {}), 12000);
-  }
-
-  let i18nApplyTimer = null;
-  function scheduleI18nApply() {
-    const lang = localStorage.getItem('riff_ui_lang') || 'en';
-    if (lang === 'en') return;
-    if (i18nApplyTimer) clearTimeout(i18nApplyTimer);
-    i18nApplyTimer = setTimeout(() => {
-      i18nApplyTimer = null;
-      applyI18n(lang).catch(() => {});
-    }, 600);
-  }
-  new MutationObserver(scheduleI18nApply).observe(document.body, { childList: true, subtree: true });
+  collectI18n();
+  applyI18n(localStorage.getItem('riff_ui_lang') || 'en');
 
   const lyricsTranslationCache = new Map();
 
@@ -5618,10 +5993,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const texts = state.syncedLyrics.map(l => l.text);
     try {
+      const deeplKey = localStorage.getItem('riff_deepl_api_key') || '';
       const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texts, targetLang: lang })
+        body: JSON.stringify({ texts, targetLang: lang, apiKey: deeplKey })
       });
       const data = await res.json();
       if (data && data.success && Array.isArray(data.translations)) {
@@ -5761,14 +6137,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   const CYRILLIC_VOWELS = new Set('аеёиоуыэюяєіїўѣѵѫѧѩѭ');
   const LATIN_VOWEL_EXTRA = new Set(['æ', 'ø', 'œ', 'ı']);
 
-  function getCharBaseWeight(c) {
-    if (PUNCT_OR_SPACE_REGEX.test(c)) return 0.4;
-    if (CJK_REGEX.test(c)) return 3.0;
-    if (MARK_REGEX.test(c)) return 3.0;
+  function getEffectiveLineDuration(idx) {
+    const start = getLineStartTime(idx);
+    const rawDur = Math.max(0.45, getLineEndTime(idx) - start);
+    const breathTail = rawDur > 1.2 ? Math.min(0.45, rawDur * 0.16) : rawDur * 0.08;
+    return Math.max(0.38, rawDur - breathTail);
+  }
+
+  function computeEstimatedWordIndex(wordSpans, matchTime, lineIdx) {
+    const totalWords = wordSpans.length;
+    if (totalWords === 0) return -1;
+    const start = getLineStartTime(lineIdx);
+    const effDur = getEffectiveLineDuration(lineIdx);
+    const elapsed = matchTime - start;
+    if (elapsed <= 0) return 0;
+    if (elapsed >= effDur) return totalWords;
+    const tau = elapsed / effDur;
+    const weights = new Float32Array(totalWords);
+    let sumW = 0;
+    for (let i = 0; i < totalWords; i++) {
+      const txt = (wordSpans[i].textContent || '').trim();
+      let w = Math.max(1.2, txt.length * 0.45);
+      if (/[,;:、，]$/.test(txt)) w += 1.65;
+      else if (/[.!?—–…]$/.test(txt)) w += 2.1;
+      if (i === totalWords - 1) w += 0.65;
+      weights[i] = w;
+      sumW += w;
+    }
+    const target = tau * sumW;
+    let acc = 0;
+    for (let i = 0; i < totalWords; i++) {
+      acc += weights[i];
+      if (target <= acc) return i;
+    }
+    return totalWords - 1;
+  }
+
+  function getCharBaseWeight(c, nextChar = '') {
+    if (c === ',' || c === ';' || c === ':' || c === '、' || c === '，') return 4.6;
+    if (c === '.' || c === '!' || c === '?' || c === '—' || c === '–' || c === '。') return 5.8;
+    if (PUNCT_OR_SPACE_REGEX.test(c)) return 0.55;
+    if (CJK_REGEX.test(c)) return 2.8;
+    if (MARK_REGEX.test(c)) return 2.6;
     const lower = c.toLowerCase();
-    if (CYRILLIC_VOWELS.has(lower)) return 3.0;
+    if (CYRILLIC_VOWELS.has(lower)) return 2.5;
     const base = c.normalize('NFD')[0].toLowerCase();
-    if ('aeiouy'.includes(base) || LATIN_VOWEL_EXTRA.has(lower)) return 3.0;
+    if ('aeiouy'.includes(base) || LATIN_VOWEL_EXTRA.has(lower)) return 2.5;
     return 1.0;
   }
 
@@ -5791,24 +6205,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       gradientLineCache = { lineEl, lineIdx: idx, text, N: 0, cumWeights: null, totalWeight: 0 };
       return gradientLineCache;
     }
-    const outroStart = Math.floor(N * 0.8);
     const cumWeights = new Float64Array(N + 1);
     cumWeights[0] = 0;
     let total = 0;
     for (let i = 0; i < N; i++) {
-      const baseW = getCharBaseWeight(chars[i]);
-      const w = (i >= outroStart) ? baseW * 1.6 : baseW;
+      let w = getCharBaseWeight(chars[i], chars[i + 1] || '');
+      if (i >= N - 2) w *= 1.18;
       total += w;
       cumWeights[i + 1] = total;
     }
-    gradientLineCache = {
-      lineEl,
-      lineIdx: idx,
-      text,
-      N,
-      cumWeights,
-      totalWeight: total
-    };
+    gradientLineCache = { lineEl, lineIdx: idx, text, N, cumWeights, totalWeight: total };
     return gradientLineCache;
   }
 
@@ -5822,7 +6228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const idx = parseInt(lineEl.id.replace('lyric-line-', ''), 10);
     const start = getLineStartTime(idx);
-    const dur = Math.max(0.5, getLineEndTime(idx) - start);
+    const dur = getEffectiveLineDuration(idx);
     const t = el.nativeAudio.currentTime + (state.isCustomLyrics ? 0.25 : 0);
     const tau = Math.min(1, Math.max(0, (t - start) / dur));
 
@@ -5863,16 +6269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       fillMain.style.setProperty('--k', k.toFixed(4));
     }
   }
-  function startGradientLoop() {
-    if (gradientRaf) return;
-    const tick = () => {
-      gradientRaf = 0;
-      if (!state.isPlaying || !state.isWindowVisible || !isGradientMode()) return;
-      updateActiveGradient();
-      gradientRaf = requestAnimationFrame(tick);
-    };
-    gradientRaf = requestAnimationFrame(tick);
-  }
+  function startGradientLoop() {}
 
   function getLyricTargetScroll(activeEl, parent) {
     if (!activeEl || !parent) return 0;
@@ -5970,74 +6367,64 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.lastActiveLyricIdx = activeIndex;
     }
 
-    document.querySelectorAll('.lyric-line').forEach((lineEl, idx) => {
-      const line = state.syncedLyrics[idx];
-      if (line && line.isGap) {
-        if (idx < activeIndex) {
-          lineEl.classList.add('past-gap');
-        } else {
-          lineEl.classList.remove('past-gap');
-        }
-      }
-      if (lineChanged) lineEl.style.setProperty('--dist', activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0);
-      if (idx === activeIndex) {
-        if (!lineEl.classList.contains('active')) lineEl.classList.add('active');
-
-        if (isGradientMode()) {
-          updateActiveGradient();
-          startGradientLoop();
-        } else if (getAdv('karaoke_words', true) && state.lyricsMode === 'word') {
-          const line = state.syncedLyrics[idx];
-          if (line && line.words && Array.isArray(line.words) && line.words.length > 0) {
-            const wordSpans = lineEl.querySelectorAll('.lyric-word');
-            wordSpans.forEach((wSpan, wIdx) => {
-              const w = line.words[wIdx];
-              const wStart = w ? (w.start !== undefined ? w.start : (w.time || 0)) : (line.words[line.words.length - 1] ? (line.words[line.words.length - 1].end || line.words[line.words.length - 1].endTime || getLineEndTime(idx)) : 0);
-              const wEnd = w ? (w.end !== undefined ? w.end : (w.endTime || (line.words[wIdx + 1] ? (line.words[wIdx + 1].start || line.words[wIdx + 1].time) : getLineEndTime(idx)))) : getLineEndTime(idx);
-              const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
-              if (currentTime >= wEnd) {
-                wSpan.className = 'lyric-word past-word' + isP;
-              } else if (currentTime >= wStart) {
-                wSpan.className = 'lyric-word active-word' + isP;
-              } else {
-                wSpan.className = 'lyric-word' + isP;
-              }
-            });
-          } else {
-            const currentLineTime = getLineStartTime(idx);
-            const nextLineTime = getLineEndTime(idx);
-            const lineDur = Math.max(0.5, nextLineTime - currentLineTime);
-            const progress = Math.min(Math.max((matchTime - currentLineTime) / lineDur, 0), 0.999);
-
-            const wordSpans = lineEl.querySelectorAll('.lyric-word');
-            const totalWords = wordSpans.length;
-            const currentWordIndex = Math.floor(progress * totalWords);
-
-            wordSpans.forEach((wSpan, wIdx) => {
-              const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
-              if (wIdx < currentWordIndex) {
-                wSpan.className = 'lyric-word past-word' + isP;
-              } else if (wIdx === currentWordIndex) {
-                wSpan.className = 'lyric-word active-word' + isP;
-              } else {
-                wSpan.className = 'lyric-word' + isP;
-              }
-            });
-          }
-        }
-      } else {
-        lineEl.classList.remove('active');
-        if (lineEl.classList.contains('gradient-line')) {
-          lineEl.querySelectorAll('.lyric-fill').forEach(f => f.style.setProperty('--k', '0'));
-        }
-        if (!isGradientMode() && getAdv('karaoke_words', true) && state.lyricsMode === 'word') {
-          lineEl.querySelectorAll('.lyric-word').forEach(wSpan => {
+    const updateActiveLineWords = (lineEl, idx) => {
+      if (!lineEl) return;
+      if (isGradientMode()) {
+        updateActiveGradient();
+      } else if (getAdv('karaoke_words', true) && state.lyricsMode === 'word') {
+        const line = state.syncedLyrics[idx];
+        if (line && line.words && Array.isArray(line.words) && line.words.length > 0) {
+          const wordSpans = lineEl.querySelectorAll('.lyric-word');
+          wordSpans.forEach((wSpan, wIdx) => {
+            const w = line.words[wIdx];
+            const wStart = w ? (w.start !== undefined ? w.start : (w.time || 0)) : 0;
+            const wEnd = w ? (w.end !== undefined ? w.end : (w.endTime || getLineEndTime(idx))) : getLineEndTime(idx);
             const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
-            wSpan.className = (idx < activeIndex ? 'lyric-word past-word' : 'lyric-word') + isP;
+            const nextCls = (currentTime >= wEnd ? 'lyric-word past-word' : (currentTime >= wStart ? 'lyric-word active-word' : 'lyric-word')) + isP;
+            if (wSpan.className !== nextCls) wSpan.className = nextCls;
+          });
+        } else {
+          const wordSpans = lineEl.querySelectorAll('.lyric-word');
+          const currentWordIndex = computeEstimatedWordIndex(wordSpans, matchTime, idx);
+          wordSpans.forEach((wSpan, wIdx) => {
+            const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
+            const nextCls = (wIdx < currentWordIndex ? 'lyric-word past-word' : (wIdx === currentWordIndex ? 'lyric-word active-word' : 'lyric-word')) + isP;
+            if (wSpan.className !== nextCls) wSpan.className = nextCls;
           });
         }
       }
-    });
+    };
+
+    if (!lineChanged) {
+      if (activeIndex >= 0) {
+        updateActiveLineWords(document.getElementById(`lyric-line-${activeIndex}`), activeIndex);
+      }
+    } else {
+      document.querySelectorAll('.lyric-line').forEach((lineEl, idx) => {
+        const line = state.syncedLyrics[idx];
+        if (line && line.isGap) {
+          lineEl.classList.toggle('past-gap', idx < activeIndex);
+        }
+        lineEl.style.setProperty('--dist', activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0);
+        if (idx === activeIndex) {
+          if (!lineEl.classList.contains('active')) lineEl.classList.add('active');
+          updateActiveLineWords(lineEl, idx);
+        } else {
+          if (lineEl.classList.contains('active')) lineEl.classList.remove('active');
+          if (lineEl.classList.contains('gradient-line')) {
+            lineEl.querySelectorAll('.lyric-fill').forEach(f => f.style.setProperty('--k', '0'));
+          }
+          if (!isGradientMode() && getAdv('karaoke_words', true) && state.lyricsMode === 'word') {
+            const targetClsBase = idx < activeIndex ? 'lyric-word past-word' : 'lyric-word';
+            lineEl.querySelectorAll('.lyric-word').forEach(wSpan => {
+              const isP = wSpan.classList.contains('lyric-paren') ? ' lyric-paren' : '';
+              const nextCls = targetClsBase + isP;
+              if (wSpan.className !== nextCls) wSpan.className = nextCls;
+            });
+          }
+        }
+      });
+    }
     if (targetY !== null && parent) {
       if (shouldSnap) {
         cancelAnimationFrame(lyricsScrollRaf);
@@ -6241,6 +6628,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   let activeTvkAmbientCover = '';
+  let activeTvkBlurVal = -1;
   const tvkPaletteCache = new Map();
   const tvkBakedCoverCache = new Map();
 
@@ -6368,6 +6756,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     ctx.fillRect(0, 0, w, h);
   }
 
+  function buildBakedTvkBlobUrl(img, cropX, cropY, cropW, cropH, blurPx, sat, bright) {
+    const size = 192;
+    const pad = Math.ceil(blurPx * 1.8);
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.filter = `blur(${Math.max(1, blurPx)}px) saturate(${sat}) contrast(1.18) brightness(${bright})`;
+    ctx.drawImage(img, cropX, cropY, cropW, cropH, -pad, -pad, size + pad * 2, size + pad * 2);
+    return c.toDataURL('image/jpeg', 0.86);
+  }
+
   function syncTvkAmbientBg() {
     const container = document.getElementById('tvk-ambient-bg');
     if (!container) return;
@@ -6376,32 +6776,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const curTrack = state.currentTrack;
     const thumb = curTrack ? getTrackThumbUrl(curTrack) : '';
-
-    if (tvkBakedCoverCache) {
-      for (const [key, val] of tvkBakedCoverCache.entries()) {
-        if (key !== thumb) {
-          if (val && val.canvas) {
-            try {
-              val.canvas.width = 1;
-              val.canvas.height = 1;
-              val.canvas = null;
-            } catch (_) {}
-          }
-          if (val && typeof val.getContext === 'function') {
-            try {
-              val.width = 1;
-              val.height = 1;
-            } catch (_) {}
-          }
-          tvkBakedCoverCache.delete(key);
-        }
-      }
-      if (thumb && !tvkBakedCoverCache.has(thumb)) {
-        tvkBakedCoverCache.set(thumb, { thumb, timestamp: Date.now() });
-      }
-      boundMap(tvkBakedCoverCache, 1);
-    }
-
     if (thumb === activeTvkAmbientCover && container.dataset.painted === '1') return;
     activeTvkAmbientCover = thumb;
     container.dataset.painted = '1';
@@ -6913,6 +7287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     tv.style.setProperty('--tvk-vis-opacity', (Math.max(10, Math.min(100, visOpacity)) / 100).toFixed(2));
     const bgBlur = parseInt(localStorage.getItem('riff_tvk_bg_blur') || '22', 10);
     tv.style.setProperty('--tvk-bg-blur', `${Math.max(0, Math.min(60, bgBlur))}px`);
+    syncTvkAmbientBg();
   }
 
   function syncTvkUI() {
@@ -7003,6 +7378,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function initTvk() {
+    if (localStorage.getItem('riff_tvk_blur_reset_v1') !== '1') {
+      localStorage.setItem('riff_tvk_blur_reset_v1', '1');
+      localStorage.setItem('riff_tvk_bg_blur', '22');
+    }
     applyTvk();
     syncTvkUI();
     syncTvkAmbientBg();
@@ -7217,17 +7596,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (valTvkBgBlur) valTvkBgBlur.textContent = `${v}px`;
       if (valTvkBgBlurSetting) valTvkBgBlurSetting.textContent = `${v}px`;
     };
-    const updateTvkBgBlur = (v) => {
+    let tvkBlurDebounceTimer = null;
+    const updateTvkBgBlur = (v, immediate = false) => {
       const val = Math.max(0, Math.min(60, parseInt(v, 10) || 0));
       localStorage.setItem('riff_tvk_bg_blur', String(val));
       syncTvkBgBlurUI(val);
       applyTvk();
+      if (immediate) {
+        if (tvkBlurDebounceTimer) clearTimeout(tvkBlurDebounceTimer);
+        syncTvkAmbientBg(true);
+      } else {
+        if (tvkBlurDebounceTimer) clearTimeout(tvkBlurDebounceTimer);
+        tvkBlurDebounceTimer = setTimeout(() => {
+          syncTvkAmbientBg(true);
+        }, 40);
+      }
     };
     syncTvkBgBlurUI(parseInt(localStorage.getItem('riff_tvk_bg_blur') || '22', 10));
     [sliderTvkBgBlur, sliderTvkBgBlurSetting].forEach(s => {
       if (!s) return;
-      s.addEventListener('input', (e) => updateTvkBgBlur(e.target.value));
-      s.addEventListener('change', (e) => updateTvkBgBlur(e.target.value));
+      s.addEventListener('input', (e) => updateTvkBgBlur(e.target.value, false));
+      s.addEventListener('change', (e) => updateTvkBgBlur(e.target.value, true));
     });
 
     const sliderVizSmooth = document.getElementById('slider-viz-smooth');
@@ -7552,6 +7941,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('beforeunload', () => { isAppClosing = true; });
 
   function pauseSmooth() {
+    stopCrossfadeTail();
+    state.isLoadingTrack = false;
     const curToken = ++smoothFadeToken;
     isPauseFading = true;
     frozenCurTime = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
@@ -7644,11 +8035,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (playPromise && typeof playPromise.catch === 'function') {
           playPromise.catch(e => {
             if (curToken !== smoothFadeToken || !el.nativeAudio?.paused) return;
+            const errName = (e && e.name) ? e.name : '';
+            const errMsg = (e && e.message) ? e.message : '';
+            if (errName === 'AbortError') return;
+            if (errName === 'NotSupportedError' || /no supported source|failed to load|interrupted by a new load/i.test(errMsg)) {
+              state.isLoadingTrack = true;
+              if (typeof recoverCurrentStream === 'function') {
+                recoverCurrentStream((el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0);
+              }
+              return;
+            }
             console.warn('Play error:', e);
             state.isPlaying = false;
             updatePlayPauseButton(false, false);
             if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-            showToast(e.message || 'Could not start playback', 'error');
           });
         }
       } catch (e) {
@@ -8033,7 +8433,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (retryStage <= 1) {
         cur._errorRetryStage = retryStage + 1;
-        updatePlayPauseButton(false, true);
+        state.isLoadingTrack = true;
         const retryController = new AbortController();
         const retryTimeout = setTimeout(() => retryController.abort(), 22000);
         try {
@@ -8080,23 +8480,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       cur._errorRetryStage = 0;
-      state.isPlaying = false;
-      updatePlayPauseButton(false, false);
-      
-
-      
-
-      
-
-      state.consecutivePlayFailures = (state.consecutivePlayFailures || 0) + 1;
-      const maxAutoSkips = Math.min(5, Math.max(1, (state.queue && state.queue.length) || 1));
-      if (state.consecutivePlayFailures >= maxAutoSkips) {
-        state.consecutivePlayFailures = 0;
-        showToast('Could not play several tracks in a row. Check your connection and try again.', 'error');
+      state.isLoadingTrack = false;
+      if (state.isRepeat && el.nativeAudio) {
+        el.nativeAudio.currentTime = 0;
+        playTrack(cur, state.queue, state.queueIndex);
         return;
       }
+      state.isPlaying = false;
+      updatePlayPauseButton(false, false);
       showToast('Could not load audio stream', 'error');
-      setTimeout(() => { if (state.currentTrack === cur) playNext(); }, 600);
     }
 
     let playbackStallTimer = null;
@@ -8107,11 +8499,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function watchPlaybackStall() {
       clearPlaybackStallTimer();
       const token = state.loadToken;
+      const stallPos = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
       playbackStallTimer = setTimeout(() => {
         playbackStallTimer = null;
-        if (token !== state.loadToken || el.nativeAudio.paused || el.nativeAudio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+        if (token !== state.loadToken || !el.nativeAudio || el.nativeAudio.paused || el.nativeAudio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+        if (Math.abs((el.nativeAudio.currentTime || 0) - stallPos) > 0.5) return;
         recoverCurrentStream(el.nativeAudio.currentTime || 0);
-      }, 12000);
+      }, 28000);
     }
 
     el.nativeAudio.addEventListener('error', () => {
@@ -8130,19 +8524,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     function prefetchNextQueueTrack() {
-      const nextIdx = state.queueIndex + 1;
-      if (state.queue && nextIdx < state.queue.length) {
-        const nextTrack = state.queue[nextIdx];
-        if (nextTrack && nextTrack.platform !== 'local') {
-          const qUrl = nextTrack.url || '';
-          const qId = nextTrack.id || '';
-          const qInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(qUrl)}&id=${encodeURIComponent(qId)}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`;
-          fetch(qInfoUrl).catch(() => {});
-        }
-      }
+      preloadNextTrackStream();
     }
 
     el.nativeAudio.addEventListener('playing', () => {
+      state.isLoadingTrack = false;
       clearPlaybackStallTimer();
       state.isPlaying = true;
       state.consecutivePlayFailures = 0;
@@ -8152,12 +8538,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
-      // Start resolving the next track as soon as playback begins instead of
-      // waiting 10s, so the following track starts without a pause.
-      if (!preloadedTrack10sFired) {
-        preloadedTrack10sFired = true;
-        preloadNextTrackStream();
-      }
     });
 
     el.nativeAudio.addEventListener('canplay', () => {
@@ -8240,12 +8620,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (crossfadeFadeInPending) {
         crossfadeFadeInPending = false;
         const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
-        if (X > 0 && audioEngine) audioEngine.fadeIn(X / 2);
+        if (X > 0 && audioEngine) audioEngine.fadeIn(X);
       }
       if (typeof m3cStart === 'function') m3cStart();
     });
 
     el.nativeAudio.addEventListener('pause', () => {
+      if (state.isLoadingTrack || activeStreamRecovery) return;
       clearPlaybackStallTimer();
       isPauseFading = false;
       emitPluginEvent('pause');
@@ -8385,10 +8766,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dur = getReliableTrackDuration();
 
       const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > Math.max(X * 3, 30) && (!hlsInstance || dur >= (state.currentTrack?.duration || 0) * 0.9) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > Math.max(X * 2, 20) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
-        if (audioEngine) audioEngine.fadeOut(X / 2);
+        startCrossfadeTailFromCurrent(X);
         state._isNaturalEnding = true;
         try {
           playNext();
@@ -8551,10 +8932,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderPresets() {
-    if (!el.presetsContainer) return;
-    el.presetsContainer.innerHTML = '';
     const all = getAllPresets();
-    all.forEach(p => {
+
+    const createPresetChip = (p) => {
       const chip = document.createElement('div');
       chip.className = 'preset-chip';
       if (state.activePresetId === p.id) chip.classList.add('active');
@@ -8574,33 +8954,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>` : ''}
-        `;
+      `;
 
-        if (isCustom) {
-          const btnRename = chip.querySelector('.btn-rename-p');
-          const btnDelete = chip.querySelector('.btn-delete-p');
-          if (btnRename) {
-            btnRename.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openRenamePresetModal(p);
-            });
-          }
-          if (btnDelete) {
-            btnDelete.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openDeletePresetConfirm(p);
-            });
-          }
+      if (isCustom) {
+        const btnRename = chip.querySelector('.btn-rename-p');
+        const btnDelete = chip.querySelector('.btn-delete-p');
+        if (btnRename) {
+          btnRename.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRenamePresetModal(p);
+          });
         }
+        if (btnDelete) {
+          btnDelete.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openDeletePresetConfirm(p);
+          });
+        }
+      }
 
-        chip.addEventListener('click', (e) => {
-          if (e.target.closest('.btn-delete-p') || e.target.closest('.btn-rename-p')) return;
-          applyPreset(p);
-        });
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-delete-p') || e.target.closest('.btn-rename-p')) return;
+        applyPreset(p);
+      });
 
-        el.presetsContainer.appendChild(chip);
-    });
-    updatePresetsFade();
+      return chip;
+    };
+
+    if (el.presetsContainer) {
+      el.presetsContainer.innerHTML = '';
+      all.forEach(p => {
+        el.presetsContainer.appendChild(createPresetChip(p));
+      });
+      updatePresetsFade();
+    }
   }
 
   function updateFade(el) {
@@ -9024,6 +9411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('riff_saved_albums', JSON.stringify(list));
     } catch (_) {}
     updateAlbumsCount();
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
   }
 
   function updateAlbumsCount() {
@@ -9324,8 +9712,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.updateRowFade = updateRowFade;
 
-  // Rows that need their edge fade refreshed on resize. One shared listener;
-  // rows that left the document are dropped whenever a new row is bound.
   const fadeRows = new Set();
   window.addEventListener('resize', () => {
     for (const row of fadeRows) {
@@ -9353,9 +9739,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let scrollStart = 0;
     let dragged = false;
 
-    // Rows are rebuilt on every search/render, so the window listener only
-    // lives for the duration of a drag; a permanent one kept every detached
-    // row (and its images) alive.
     const onMouseUp = () => {
       window.removeEventListener('mouseup', onMouseUp);
       isDown = false;
@@ -9593,7 +9976,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (p) p.setAttribute('d', d);
         });
       }
-      requestAnimationFrame(tick);
+      if (spinners.length > 0) requestAnimationFrame(tick); else setTimeout(() => requestAnimationFrame(tick), 500);
     }
     requestAnimationFrame(tick);
   }
@@ -9775,13 +10158,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const thumb = document.createElement('div');
         thumb.className = 'sh-thumb' + (entry.kind === 'artist' ? ' round' : '');
-        if (entry.kind === 'query') {
-          thumb.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>';
-        } else if (entry.thumb) {
+        const resolvedThumb = entry.thumb || (entry.track ? getTrackThumbUrl(entry.track) : '') || (entry.track && entry.track.id && !/^(cand_|dz_|it_|sp_|ym_)/i.test(entry.track.id) ? `https://i.ytimg.com/vi/${entry.track.id}/hqdefault.jpg` : '');
+        const fallbackSvg = entry.kind === 'artist'
+          ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+          : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>';
+        thumb.innerHTML = fallbackSvg;
+        if (resolvedThumb) {
           const img = document.createElement('img');
           img.alt = '';
-          img.addEventListener('error', () => img.remove());
-          img.src = entry.thumb;
+          img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;';
+          img.addEventListener('error', () => {
+            if (entry.kind === 'artist' && entry.title && !img.dataset.retried) {
+              img.dataset.retried = '1';
+              fetch(`http://127.0.0.1:${state.serverPort}/api/artist?name=${encodeURIComponent(entry.title)}`)
+                .then(r => r.json())
+                .then(d => {
+                  if (d?.artist?.avatar) {
+                    img.src = d.artist.avatar;
+                    entry.thumb = d.artist.avatar;
+                  } else img.remove();
+                }).catch(() => img.remove());
+            } else if (entry.kind === 'track' && entry.title && !img.dataset.retried) {
+              img.dataset.retried = '1';
+              fetch(`http://127.0.0.1:${state.serverPort}/api/track-cover?artist=${encodeURIComponent(entry.subtitle || '')}&title=${encodeURIComponent(entry.title || '')}`)
+                .then(r => r.json())
+                .then(d => {
+                  if (d?.cover) {
+                    img.src = d.cover;
+                    entry.thumb = d.cover;
+                  } else img.remove();
+                }).catch(() => img.remove());
+            } else {
+              img.remove();
+            }
+          });
+          img.src = resolvedThumb;
+          thumb.style.position = 'relative';
           thumb.appendChild(img);
         }
 
@@ -10325,6 +10737,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         label: 'Add to queue',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/><polygon points="3 6 3 10 6 8 3 6"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></svg>',
         action: () => addTrackToQueue(track)
+      },
+      {
+        id: 'pin-sidebar',
+        active: isTrackPinnedToSidebar(track),
+        label: isTrackPinnedToSidebar(track) ? 'Unpin from sidebar' : 'Pin to sidebar',
+        icon: '<svg viewBox="0 0 24 24" fill="' + (isTrackPinnedToSidebar(track) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 3h6l-1 7 3 3v2H7v-2l3-3-1-7z"/></svg>',
+        action: () => togglePinTrackToSidebar(track)
       },
       ...(currentPinScope() ? [{
         id: 'pin',
@@ -11717,7 +12136,9 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
       async function renderArtistAlbums() {
         if (!albumsGrid) return;
-        const validAlbums = (Array.isArray(data?.artist?.albums) ? data.artist.albums : []).filter(a => a && a.title && a.artist && a.artist.toLowerCase().trim() === cleanName.toLowerCase().trim());
+        const validAlbums = (Array.isArray(data?.artist?.albums) ? data.artist.albums : [])
+          .filter(a => a && a.title && a.artist && a.artist.toLowerCase().trim() === cleanName.toLowerCase().trim())
+          .filter(a => (a.trackCount === undefined || a.trackCount === 0 || a.trackCount > 1) && a.recordType !== 'single');
 
         if (validAlbums.length === 0) {
           if (horizTabs) horizTabs.style.display = 'none';
@@ -11874,6 +12295,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
   function updateFavoritesBadge() {
     setNavCount(el.favoritesCount, state.favorites.length);
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
   }
 
   const TRACK_SORT_KEYS = { favorites: 'riff_favorites_sort', playlist: 'riff_playlist_sort' };
@@ -12036,6 +12458,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
   function updateHistoryBadge() {
     setNavCount(el.historyCount, state.history.length);
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
   }
 
   function renderHistoryView() {
@@ -12045,6 +12468,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
   function updateQueueBadge() {
     setNavCount(el.queueCount, state.queue.length);
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
   }
 
   function removeQueueTracks(indices) {
@@ -12539,6 +12963,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
   }
 
   function renderPlaylistsList() {
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
     if (!el.playlistsList) return;
     el.playlistsList.innerHTML = '';
     if (!state.playlists || state.playlists.length === 0) {
@@ -13262,7 +13687,51 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
   }
 
+  let settingsCloseTimer = null;
+  function openSettingsModal(cat) {
+    if (!el.viewSettings) return;
+    if (typeof resetSettingsSearch === 'function') resetSettingsSearch();
+    if (settingsCloseTimer) { clearTimeout(settingsCloseTimer); settingsCloseTimer = null; }
+    const savedCat = cat || localStorage.getItem('riff_settings_cat');
+    showSettingsCategory((savedCat === 'overview' || !savedCat) ? 'interface' : savedCat);
+    el.viewSettings.classList.add('active');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (el.viewSettings) el.viewSettings.classList.add('modal-open');
+      });
+    });
+    updateOfflineStorageUI();
+    updateMusicFolderUI();
+    updateDownloadFolderUI();
+    updateDownloadCaptionPath();
+    checkToolsStatus(false);
+  }
+  function closeSettingsModal() {
+    if (typeof resetSettingsSearch === 'function') resetSettingsSearch();
+    const btnSbSettings = document.getElementById('btn-sb-settings');
+    if (btnSbSettings) btnSbSettings.classList.remove('active');
+    if (!el.viewSettings || !el.viewSettings.classList.contains('active')) return;
+    el.viewSettings.classList.remove('modal-open');
+    if (settingsCloseTimer) clearTimeout(settingsCloseTimer);
+    settingsCloseTimer = setTimeout(() => {
+      settingsCloseTimer = null;
+      if (el.viewSettings && !el.viewSettings.classList.contains('modal-open')) {
+        el.viewSettings.classList.remove('active');
+      }
+    }, 200);
+  }
+  window.openSettingsModal = openSettingsModal;
+  window.closeSettingsModal = closeSettingsModal;
+
   function switchView(viewName) {
+    if (typeof resetSettingsSearch === 'function') resetSettingsSearch();
+    const btnSbSettings = document.getElementById('btn-sb-settings');
+    if (btnSbSettings) btnSbSettings.classList.toggle('active', viewName === 'settings');
+    if (viewName === 'settings') {
+      openSettingsModal();
+      return;
+    }
+    closeSettingsModal();
     clearTrackSelection();
     if (state.currentView && state.currentView !== viewName) {
       state.previousView = state.currentView;
@@ -13271,7 +13740,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
     requestAnimationFrame(() => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, el.viewSettings].forEach(v => {
+      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
         if (v) v.classList.remove('active');
       });
 
@@ -13280,7 +13749,18 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
           [el.navDiscover, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
             if (n) n.classList.remove('active');
           });
+          const navMap = {
+            discover: el.navDiscover,
+            favorites: el.navFavorites,
+            albums: el.navAlbums,
+            local: el.navLocal,
+            history: el.navHistory,
+            queue: el.navQueue
+          };
+          if (navMap[viewName]) navMap[viewName].classList.add('active');
         }
+
+        updateNavIndicator(true);
 
           if (viewName === 'discover') {
             if (el.viewDiscover) el.viewDiscover.classList.add('active');
@@ -13315,24 +13795,15 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
           } else if (viewName === 'artist') {
             if (el.viewArtist) el.viewArtist.classList.add('active');
           } else if (viewName === 'settings') {
-            if (el.viewSettings) el.viewSettings.classList.add('active');
-            if (el.navSettings) el.navSettings.classList.add('active');
-            const savedCat = localStorage.getItem('riff_settings_cat');
-            showSettingsCategory((savedCat === 'overview' || !savedCat) ? 'home' : savedCat);
-            updateOfflineStorageUI();
-            updateMusicFolderUI();
-  updateDownloadFolderUI();
-  updateDownloadCaptionPath();
-            checkToolsStatus(false);
+            openSettingsModal();
           }
-
-          updateNavIndicator(true);
 
           refreshNavBadges();
 
           highlightPlayingRow();
           if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
           updateFxVisibility();
+          if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
     });
   }
 
@@ -13384,7 +13855,24 @@ let navIndicatorAnimId = 0;
 let navIndicatorCurTop = null;
 let navIndicatorCurBot = null;
 
+function solveCubicBezier(p1x, p1y, p2x, p2y, x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  let t = x;
+  for (let i = 0; i < 8; i++) {
+    const inv = 1 - t;
+    const curX = 3 * inv * inv * t * p1x + 3 * inv * t * t * p2x + t * t * t;
+    const dx = 3 * inv * inv * p1x + 6 * inv * t * (p2x - p1x) + 3 * t * t * (1 - p2x);
+    if (Math.abs(curX - x) < 1e-5 || Math.abs(dx) < 1e-5) break;
+    t -= (curX - x) / dx;
+  }
+  t = Math.max(0, Math.min(1, t));
+  const inv = 1 - t;
+  return 3 * inv * inv * t * p1y + 3 * inv * t * t * p2y + t * t * t;
+}
+
 function getNavItemOffsetInSidebar(btn, nav) {
+  if (!btn || !nav) return { top: 0, height: 48 };
   const ind = btn.querySelector('.nav-indicator') || btn;
   let y = 0;
   let cur = ind;
@@ -13392,7 +13880,7 @@ function getNavItemOffsetInSidebar(btn, nav) {
     y += cur.offsetTop || 0;
     cur = cur.offsetParent;
   }
-  return { top: y, height: ind.offsetHeight || 48 };
+  return { top: y, height: ind.offsetHeight || btn.offsetHeight || 48 };
 }
 
 function moveNavIndicator(targetBtn, animate = true) {
@@ -13411,7 +13899,7 @@ function moveNavIndicator(targetBtn, animate = true) {
 
   const isReduced = !animate || document.body.classList.contains('perf') || document.documentElement.classList.contains('force-reduced-motion');
 
-  if (!targetBtn || targetBtn.id === 'nav-discover' || targetBtn.classList.contains('nav-collapsed')) {
+  if (!targetBtn || targetBtn.id === 'nav-discover' || targetBtn.classList.contains('nav-collapsed') || targetBtn.offsetParent === null) {
     indicator.classList.add('is-hidden');
     targetBtn?.classList.add('indicator-arrived');
     return;
@@ -13420,13 +13908,14 @@ function moveNavIndicator(targetBtn, animate = true) {
   indicator.classList.remove('is-hidden');
   const box = getNavItemOffsetInSidebar(targetBtn, nav);
   const destTop = box.top;
-  const destBot = box.top + box.height;
+  const destH = Math.max(44, box.height || 48);
+  const destBot = destTop + destH;
 
-  if (isReduced || navIndicatorCurTop === null) {
+  if (isReduced || navIndicatorCurTop === null || navIndicatorCurBot === null) {
     navIndicatorCurTop = destTop;
     navIndicatorCurBot = destBot;
-    indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0)`;
-    indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+    indicator.style.transform = `translate3d(0, ${destTop.toFixed(2)}px, 0)`;
+    indicator.style.height = `${destH.toFixed(2)}px`;
     targetBtn.classList.add('indicator-arrived');
     return;
   }
@@ -13437,46 +13926,52 @@ function moveNavIndicator(targetBtn, animate = true) {
   if (dist < 1.5) {
     navIndicatorCurTop = destTop;
     navIndicatorCurBot = destBot;
-    indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0)`;
-    indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+    indicator.style.transform = `translate3d(0, ${destTop.toFixed(2)}px, 0)`;
+    indicator.style.height = `${destH.toFixed(2)}px`;
     targetBtn.classList.add('indicator-arrived');
     return;
   }
 
   const movingDown = destTop > startTop;
-  const totalDur = Math.min(360, Math.max(260, 240 + dist * 0.28));
+  const totalDur = Math.min(390, Math.max(310, 290 + Math.min(dist, 240) * 0.38));
+  const maxPillH = Math.min(112, destH + Math.max(34, dist * 0.58));
   const startTime = performance.now();
   let arrivedSet = false;
 
-  const easeLead = (t) => 1 - Math.pow(1 - t, 3.2);
-  const easeTrail = (t) => t < 0.16 ? 0 : 1 - Math.pow(1 - (t - 0.16) / 0.84, 2.6);
-
   const step = (now) => {
     const rawT = Math.min(1, (now - startTime) / totalDur);
-    const kLead = easeLead(rawT);
-    const kTrail = easeTrail(rawT);
+    const kLead = solveCubicBezier(0.2, 0.92, 0.28, 1, rawT);
+    const kTrail = solveCubicBezier(0.46, 0.04, 0.24, 1, rawT);
+
     if (movingDown) {
-      navIndicatorCurBot = startBot + (destBot - startBot) * kLead;
-      navIndicatorCurTop = startTop + (destTop - startTop) * kTrail;
+      const bot = startBot + (destBot - startBot) * kLead;
+      const rawTop = startTop + (destTop - startTop) * kTrail;
+      navIndicatorCurBot = bot;
+      navIndicatorCurTop = Math.min(bot - destH, Math.max(rawTop, bot - maxPillH));
     } else {
-      navIndicatorCurTop = startTop + (destTop - startTop) * kLead;
-      navIndicatorCurBot = startBot + (destBot - startBot) * kTrail;
+      const top = startTop + (destTop - startTop) * kLead;
+      const rawBot = startBot + (destBot - startBot) * kTrail;
+      navIndicatorCurTop = top;
+      navIndicatorCurBot = Math.max(top + destH, Math.min(rawBot, top + maxPillH));
     }
-    const h = Math.max(48, navIndicatorCurBot - navIndicatorCurTop);
-    indicator.style.transform = `translate3d(0, ${navIndicatorCurTop.toFixed(1)}px, 0)`;
-    indicator.style.height = h.toFixed(1) + 'px';
-    if (!arrivedSet && rawT >= 0.65) {
+
+    const curH = Math.max(destH, navIndicatorCurBot - navIndicatorCurTop);
+    indicator.style.transform = `translate3d(0, ${navIndicatorCurTop.toFixed(2)}px, 0)`;
+    indicator.style.height = `${curH.toFixed(2)}px`;
+
+    if (!arrivedSet && rawT >= 0.45) {
       arrivedSet = true;
       targetBtn.classList.add('indicator-arrived');
     }
+
     if (rawT < 1) {
       navIndicatorAnimId = requestAnimationFrame(step);
     } else {
       navIndicatorAnimId = 0;
       navIndicatorCurTop = destTop;
       navIndicatorCurBot = destBot;
-      indicator.style.transform = `translate3d(0, ${destTop.toFixed(1)}px, 0)`;
-      indicator.style.height = (destBot - destTop).toFixed(1) + 'px';
+      indicator.style.transform = `translate3d(0, ${destTop.toFixed(2)}px, 0)`;
+      indicator.style.height = `${destH.toFixed(2)}px`;
       targetBtn.classList.add('indicator-arrived');
     }
   };
@@ -13494,7 +13989,9 @@ function updateNavIndicator(animate) {
   const sidebarNavElem = document.querySelector('.sidebar-nav');
   if (sidebarNavElem) {
     refreshStacks();
-    new ResizeObserver(() => updateNavIndicator(false)).observe(sidebarNavElem);
+    new ResizeObserver(() => {
+      if (!navIndicatorAnimId) updateNavIndicator(false);
+    }).observe(sidebarNavElem);
   }
 
   function setPlayPauseState(playing, animate = true) {
@@ -13722,6 +14219,7 @@ function updateNavIndicator(animate) {
       if (el.rightPanel) el.rightPanel.classList.toggle('hidden', !state.isRightPanelOpen);
       el.btnToggleLyricsPanel.classList.toggle('active', state.isRightPanelOpen);
       if (state.isRightPanelOpen) {
+        if (typeof showRpControls === 'function') showRpControls();
         updateLyricsPadding();
         state.forceSnapLyrics = true;
         state.forceLyricsScroll = true;
@@ -13736,6 +14234,26 @@ function updateNavIndicator(animate) {
         });
       }
       setTimeout(resizeCanvases, 150);
+    });
+  }
+
+  let showRpControls = null;
+  if (el.rightPanel) {
+    let rpHideTimer = null;
+    showRpControls = () => {
+      el.rightPanel.classList.add('rp-controls-visible');
+      if (rpHideTimer) clearTimeout(rpHideTimer);
+      rpHideTimer = setTimeout(() => {
+        el.rightPanel.classList.remove('rp-controls-visible');
+      }, 1800);
+    };
+    el.rightPanel.addEventListener('mouseenter', showRpControls);
+    el.rightPanel.addEventListener('pointermove', showRpControls, { passive: true });
+    el.rightPanel.addEventListener('mouseleave', () => {
+      if (rpHideTimer) clearTimeout(rpHideTimer);
+      rpHideTimer = setTimeout(() => {
+        el.rightPanel.classList.remove('rp-controls-visible');
+      }, 350);
     });
   }
 
@@ -13933,7 +14451,13 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
 
+  const showYtPlatform = localStorage.getItem('riff_show_yt_platform') === '1';
+  document.body.classList.toggle('show-yt-platform', showYtPlatform);
+
   function setPlatform(platform, triggerSearch = true) {
+    if (platform === 'youtube' && localStorage.getItem('riff_show_yt_platform') !== '1') {
+      platform = 'ytmusic';
+    }
     if (!['youtube', 'ytmusic', 'soundcloud'].includes(platform)) platform = 'ytmusic';
     state.platform = platform;
     localStorage.setItem('riff_platform', platform);
@@ -14004,6 +14528,24 @@ function bindCoverHoldZoom(wrapEl) {
         document.documentElement.style.setProperty('--engine-gap', '16px');
       }
     }
+  }
+
+  const btnShowYtPlatform = document.getElementById('btn-show-yt-platform');
+  if (btnShowYtPlatform) {
+    btnShowYtPlatform.classList.toggle('active', showYtPlatform);
+    btnShowYtPlatform.addEventListener('click', () => {
+      const next = !btnShowYtPlatform.classList.contains('active');
+      btnShowYtPlatform.classList.toggle('active', next);
+      localStorage.setItem('riff_show_yt_platform', next ? '1' : '0');
+      document.body.classList.toggle('show-yt-platform', next);
+      if (next) {
+        showToast('Warning: YouTube may return non-music videos and load slower than YouTube Music', 'warning', 5000);
+      } else if (state.platform === 'youtube') {
+        setPlatform('ytmusic', false);
+      }
+      updateEngineWidthVar();
+      setTimeout(updateEngineWidthVar, 350);
+    });
   }
 
   const btnCompactEngineBtns = document.getElementById('btn-compact-engine-btns');
@@ -15226,24 +15768,33 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
-  if (el.sliderTextAlpha) {
-    el.sliderTextAlpha.addEventListener('input', (e) => {
-      const val = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 100));
-      if (el.valTextAlpha) el.valTextAlpha.textContent = `${val}%`;
-      document.documentElement.style.setProperty('--text-alpha', `${val}%`);
-      localStorage.setItem('riff_text_alpha', val.toString());
-      refreshCachedThemeColors();
+  if (el.sliderPanelBlur) {
+    el.sliderPanelBlur.addEventListener('input', (e) => {
+      const val = Math.max(0, Math.min(48, parseInt(e.target.value, 10) || 0));
+      document.documentElement.style.setProperty('--panel-blur', `${val}px`);
+      document.body.classList.toggle('no-panel-blur', val <= 0);
+      if (el.valPanelBlur) el.valPanelBlur.textContent = `${val}px`;
+      localStorage.setItem('riff_panel_blur', String(val));
     });
   }
 
-  if (el.btnResetTextAlpha) {
-    el.btnResetTextAlpha.addEventListener('click', () => {
-      const val = 100;
-      if (el.sliderTextAlpha) el.sliderTextAlpha.value = val;
-      if (el.valTextAlpha) el.valTextAlpha.textContent = `${val}%`;
-      document.documentElement.style.setProperty('--text-alpha', `${val}%`);
-      localStorage.setItem('riff_text_alpha', val.toString());
-      refreshCachedThemeColors();
+  if (el.btnResetPanelBlur) {
+    el.btnResetPanelBlur.addEventListener('click', () => {
+      const val = 24;
+      if (el.sliderPanelBlur) el.sliderPanelBlur.value = val;
+      if (el.valPanelBlur) el.valPanelBlur.textContent = `${val}px`;
+      document.documentElement.style.setProperty('--panel-blur', `${val}px`);
+      document.body.classList.toggle('no-panel-blur', false);
+      localStorage.setItem('riff_panel_blur', '24');
+    });
+  }
+
+  if (el.btnPlayBtnBg) {
+    el.btnPlayBtnBg.addEventListener('click', () => {
+      const isNowActive = !el.btnPlayBtnBg.classList.contains('active');
+      el.btnPlayBtnBg.classList.toggle('active', isNowActive);
+      document.body.classList.toggle('play-btn-nobg', !isNowActive);
+      localStorage.setItem('riff_play_btn_bg', isNowActive ? 'true' : 'false');
     });
   }
 
@@ -15466,7 +16017,7 @@ function bindCoverHoldZoom(wrapEl) {
 
   function currentUiAlpha() { return Number(document.getElementById('slider-ui-alpha').value); }
   function setUiAlphaViaSlider(v) { const s = document.getElementById('slider-ui-alpha'); if (!s) return; s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); }
-  function backgroundActive() { return !!localStorage.getItem('riff_bg_url') || getAdv('cover_bg', true); }
+  function backgroundActive() { return !!localStorage.getItem('riff_bg_url') || getAdv('cover_bg', false); }
   function onBackgroundChanged(kind, enabled) {
     if (document.body.classList.contains('light') || document.body.getAttribute('data-theme') === 'light') return;
     if (!getAdv('ui_alpha_auto', true)) return;
@@ -15812,7 +16363,7 @@ function bindCoverHoldZoom(wrapEl) {
   const advButtons = document.querySelectorAll('.effect-switch-btn[data-adv]');
   advButtons.forEach(btn => {
     const key = btn.dataset.adv;
-    const defaultVal = key === 'reduce_motion' ? systemPrefersReducedMotion() : (key === 'mesh_gradient' || key === 'mesh_cover_color' || key === 'clip_fx' || key === 'intensity_bg' || key === 'hide_titlebar' || key === 'classic_sidebar') ? false : true;
+    const defaultVal = key === 'reduce_motion' ? systemPrefersReducedMotion() : (key === 'mesh_gradient' || key === 'mesh_cover_color' || key === 'clip_fx' || key === 'intensity_bg' || key === 'hide_titlebar' || key === 'classic_sidebar' || key === 'cover_bg' || key === 'track_banners') ? false : true;
     const currentVal = getAdv(key, defaultVal);
     btn.classList.toggle('active', currentVal);
 
@@ -15872,7 +16423,7 @@ function bindCoverHoldZoom(wrapEl) {
       } else if (key === 'banners' || key === 'track_banners') {
         const bannerR = document.getElementById('right-panel-banner');
         const bannerP = document.getElementById('playlist-header-banner');
-        const showR = getAdv('banners', true) && getAdv('track_banners', true);
+        const showR = getAdv('banners', true) && getAdv('track_banners', false);
         const showP = getAdv('banners', true);
         if (bannerR) {
           bannerR.style.display = showR ? '' : 'none';
@@ -15905,6 +16456,19 @@ function bindCoverHoldZoom(wrapEl) {
       const v = !btnSearchArtists.classList.contains('active');
       btnSearchArtists.classList.toggle('active', v);
       localStorage.setItem('riff_search_artists', v ? '1' : '0');
+    });
+  }
+
+  const btnClassicTrackRows = document.getElementById('btn-classic-track-rows');
+  if (btnClassicTrackRows) {
+    const isClassic = localStorage.getItem('riff_classic_track_rows') === '1';
+    btnClassicTrackRows.classList.toggle('active', isClassic);
+    document.body.classList.toggle('classic-track-rows', isClassic);
+    btnClassicTrackRows.addEventListener('click', () => {
+      const on = !document.body.classList.contains('classic-track-rows');
+      document.body.classList.toggle('classic-track-rows', on);
+      btnClassicTrackRows.classList.toggle('active', on);
+      localStorage.setItem('riff_classic_track_rows', on ? '1' : '0');
     });
   }
 
@@ -16024,12 +16588,63 @@ function bindCoverHoldZoom(wrapEl) {
     { id: '16-chrome.svg', label: 'Chrome' },
     { id: '17-eclipse.svg', label: 'Eclipse' },
     { id: '18-nebula.svg', label: 'Nebula' },
-    { id: '19-horizon.svg', label: 'Horizon' }
+    { id: '19-horizon.svg', label: 'Horizon' },
+    { id: '20-halloween.svg', label: 'Halloween 2026' }
   ];
   function resolveAppIconSrc(val) {
     if (!val) return '../../assets/02-editor.svg';
     if (val.startsWith('file:') || val.startsWith('http') || val.startsWith('data:')) return val;
     return '../../assets/' + val.replace(/^.*assets\//, '');
+  }
+  function updateHomeBannerColorsFromIcon(imgSrc) {
+    const navBtn = document.getElementById('nav-discover');
+    if (!navBtn || !imgSrc) return;
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 24;
+        c.height = 24;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 24, 24);
+        const data = ctx.getImageData(0, 0, 24, 24).data;
+        const picked = [];
+        const quads = [[0, 0, 12, 12], [12, 0, 24, 12], [0, 12, 12, 24], [12, 12, 24, 24]];
+        for (const [x0, y0, x1, y1] of quads) {
+          let rS = 0, gS = 0, bS = 0, cnt = 0;
+          for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+              const idx = (y * 24 + x) * 4;
+              const a = data[idx + 3];
+              const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+              if (a > 60 && (r + g + b) > 30) {
+                rS += r; gS += g; bS += b; cnt++;
+              }
+            }
+          }
+          if (cnt > 0) {
+            let avgR = Math.round(rS / cnt);
+            let avgG = Math.round(gS / cnt);
+            let avgB = Math.round(bS / cnt);
+            const lum = (avgR * 299 + avgG * 587 + avgB * 114) / 1000;
+            if (lum > 140) {
+              const dim = Math.max(0.35, 140 / lum);
+              avgR = Math.round(avgR * dim);
+              avgG = Math.round(avgG * dim);
+              avgB = Math.round(avgB * dim);
+            }
+            picked.push(`rgb(${avgR}, ${avgG}, ${avgB})`);
+          }
+        }
+        while (picked.length < 4) picked.push(picked[0] || 'var(--md-sys-color-primary)');
+        navBtn.style.setProperty('--sb-ban-c1', picked[0]);
+        navBtn.style.setProperty('--sb-ban-c2', picked[1]);
+        navBtn.style.setProperty('--sb-ban-c3', picked[2]);
+        navBtn.style.setProperty('--sb-ban-c4', picked[3]);
+      } catch (_) {}
+    };
+    img.src = imgSrc;
   }
   function applyHomeAppIcon(val) {
     const chosen = val || localStorage.getItem('riff_app_icon') || '02-editor.svg';
@@ -16042,6 +16657,7 @@ function bindCoverHoldZoom(wrapEl) {
         btn.classList.toggle('active', btn.dataset.icon === chosen);
       });
     }
+    updateHomeBannerColorsFromIcon(resolveAppIconSrc(chosen));
   }
   function initAppIconPicker() {
     const grid = document.getElementById('app-icon-picker-grid');
@@ -16099,8 +16715,6 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
   enhanceSliders();
-  let sliderRaf = 0;
-  new MutationObserver(() => { if (sliderRaf) return; sliderRaf = requestAnimationFrame(() => { sliderRaf = 0; enhanceSliders(); }); }).observe(document.body, { childList: true, subtree: true });
 
   (function initHueSegments() {
     const input = document.getElementById('slider-theme-hue');
@@ -16364,7 +16978,11 @@ function bindCoverHoldZoom(wrapEl) {
     if (state.isPlaying) m3c.phase += 0.0075 * delta;
 
     m3cDraw(now);
-    m3c.raf = requestAnimationFrame(m3cLoop);
+    if (state.isPlaying || m3c.isHovered || isHoverAnimating || Math.abs(rateDiff) > 0.01) {
+      m3c.raf = requestAnimationFrame(m3cLoop);
+    } else {
+      m3c.raf = 0;
+    }
   }
   function m3cStart() { if (m3c && !m3c.raf) m3c.raf = requestAnimationFrame(m3cLoop); }
   function applyM3Cover() {
@@ -16395,7 +17013,7 @@ function bindCoverHoldZoom(wrapEl) {
     applyM3Cover();
   }
   const btnBarWave = document.getElementById('btn-bar-wave');
-  const barWaveOn = localStorage.getItem('riff_bar_wave') !== '0';
+  const barWaveOn = localStorage.getItem('riff_bar_wave') === '1';
   function applyBarWave(on) {
     const vc = document.getElementById('visualizer-container');
     if (vc) {
@@ -16940,15 +17558,36 @@ function bindCoverHoldZoom(wrapEl) {
     const pane = document.querySelector('#view-settings .settings-pane'); if (pane) pane.scrollTop = 0;
     try { localStorage.setItem('riff_settings_cat', cat); } catch (e) {}
     if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
+    if (cat !== 'custom-themes') {
+      const ctl = document.getElementById('custom-themes-list');
+      if (ctl && ctl.innerHTML) ctl.innerHTML = '';
+    }
     if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();
+    if (cat === 'account' && typeof syncLocalAccountUI === 'function') syncLocalAccountUI();
     requestAnimationFrame(() => refreshStacks());
   }
   window.showSettingsCategory = showSettingsCategory;
 
   const settingsSearchInput = document.getElementById('settings-search-input');
+  const settingsSearchClear = document.getElementById('settings-search-clear');
+
+  function resetSettingsSearch() {
+    const input = document.getElementById('settings-search-input');
+    const clearBtn = document.getElementById('settings-search-clear');
+    if (input && input.value) {
+      input.value = '';
+      input.dispatchEvent(new Event('input'));
+    }
+    if (clearBtn) clearBtn.classList.add('hidden');
+  }
+  window.resetSettingsSearch = resetSettingsSearch;
+
   if (settingsSearchInput) {
     settingsSearchInput.addEventListener('input', () => {
       const q = settingsSearchInput.value.trim().toLowerCase();
+      const clearBtn = document.getElementById('settings-search-clear');
+      if (clearBtn) clearBtn.classList.toggle('hidden', !q);
+
       const sections = document.querySelectorAll('#view-settings .settings-section');
       const activeNavBtn = document.querySelector('#view-settings .settings-nav-btn.active');
       const activeCat = activeNavBtn ? activeNavBtn.dataset.cat : 'interface';
@@ -16997,12 +17636,22 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  if (settingsSearchClear) {
+    settingsSearchClear.addEventListener('click', () => {
+      if (settingsSearchInput) {
+        settingsSearchInput.value = '';
+        settingsSearchInput.dispatchEvent(new Event('input'));
+        settingsSearchInput.focus();
+      }
+    });
+  }
+
   const settingsNav = document.getElementById('settings-nav');
   if (settingsNav) {
     settingsNav.addEventListener('click', (e) => {
       const btn = e.target.closest('.settings-nav-btn');
       if (btn && btn.dataset.cat) {
-        if (settingsSearchInput) settingsSearchInput.value = '';
+        resetSettingsSearch();
         showSettingsCategory(btn.dataset.cat);
       }
     });
@@ -17164,7 +17813,6 @@ function bindCoverHoldZoom(wrapEl) {
     }
     customThemes = await window.electronAPI.listThemes();
     applyCustomStyles();
-    renderThemeCards();
   }
 
   const btnAddTheme = document.getElementById('btn-add-theme');
@@ -17370,6 +18018,15 @@ function bindCoverHoldZoom(wrapEl) {
       const s = document.createElement('script');
       s.src = '../../vendor/monaco/vs/loader.js';
       s.onload = () => {
+        const monacoBaseUrl = new URL('../../vendor/monaco/', window.location.href).href;
+        window.MonacoEnvironment = {
+          getWorkerUrl: function () {
+            const blob = new Blob([
+              `self.MonacoEnvironment = { baseUrl: '${monacoBaseUrl}' }; importScripts('${monacoBaseUrl}vs/base/worker/workerMain.js');`
+            ], { type: 'text/javascript' });
+            return URL.createObjectURL(blob);
+          }
+        };
         window.require.config({ paths: { vs: '../../vendor/monaco/vs' } });
         window.require(['vs/editor/editor.main'], () => resolve(window.monaco), reject);
       };
@@ -17485,8 +18142,25 @@ function bindCoverHoldZoom(wrapEl) {
       t.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="sw-icon"/></svg>';
     });
   }
-  let swRaf = 0;
-  new MutationObserver(() => { if (swRaf) return; swRaf = requestAnimationFrame(() => { swRaf = 0; decorateSwitches(); }); }).observe(document.body, { childList: true, subtree: true });
+
+  let domUiMaintTimer = 0;
+  new MutationObserver((mutations) => {
+    let hasStructuralAdd = false;
+    for (let i = 0; i < mutations.length; i++) {
+      const m = mutations[i];
+      const t = m.target;
+      if (!t || !t.nodeType) continue;
+      if (t.id === 'lyrics-container' || t.id === 'mini-lyrics-container' || t.id === 'm3-dynamic-defs' || t.classList?.contains('lyric-line')) continue;
+      if (m.addedNodes && m.addedNodes.length > 0) { hasStructuralAdd = true; break; }
+    }
+    if (!hasStructuralAdd || domUiMaintTimer) return;
+    domUiMaintTimer = setTimeout(() => {
+      domUiMaintTimer = 0;
+      enhanceSliders();
+      decorateSwitches();
+      scheduleI18nApply();
+    }, 250);
+  }).observe(document.body, { childList: true, subtree: true });
   decorateSwitches();
 
   const settingWinMediaKeys = document.getElementById('setting-win-media-keys');
@@ -17904,6 +18578,7 @@ function bindCoverHoldZoom(wrapEl) {
     const curLang = getSupportedUiLanguage(localStorage.getItem('riff_ui_lang') || 'en');
     const foundCur = UI_TRANSLATION_LANGUAGES.find(l => l.code === curLang);
     if (foundCur && uiLangLabel) {
+      uiLangLabel.setAttribute('data-i18n-fixed', 'true');
       uiLangLabel.textContent = `${foundCur.flag} ${foundCur.name} (${foundCur.code})`;
     }
 
@@ -17915,6 +18590,7 @@ function bindCoverHoldZoom(wrapEl) {
         btn.type = 'button';
         btn.className = 'm3-dropdown-option';
         btn.dataset.value = item.code;
+        btn.setAttribute('data-i18n-fixed', 'true');
         const text = `${item.flag} ${item.name} (${item.code})`;
         btn.textContent = text;
         if (item.code === curLang) {
@@ -17923,19 +18599,22 @@ function bindCoverHoldZoom(wrapEl) {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const prevLang = localStorage.getItem('riff_ui_lang') || 'en';
-          if (item.code === prevLang) {
-            if (uiLangDropdown) uiLangDropdown.classList.remove('open');
-            return;
-          }
           if (uiLangDropdown) uiLangDropdown.classList.remove('open');
           uiLangMenu.querySelectorAll('.m3-dropdown-option').forEach(o => o.classList.remove('selected'));
           btn.classList.add('selected');
-          if (uiLangLabel) uiLangLabel.textContent = text;
+          if (uiLangLabel) {
+            uiLangLabel.setAttribute('data-i18n-fixed', 'true');
+            uiLangLabel.textContent = text;
+          }
+          if (item.code === prevLang) return;
 
-          await runWithI18nLoadingOverlay(async () => {
-            await applyI18n(item.code);
-          });
-          showLangRestartDialog(item.code);
+          localStorage.setItem('riff_ui_lang', item.code);
+          if (window.electronAPI && window.electronAPI.storageSaveSync && window.__RIFF_STORAGE_MAP__) {
+            window.__RIFF_STORAGE_MAP__['riff_ui_lang'] = item.code;
+            window.electronAPI.storageSaveBatch(window.__RIFF_STORAGE_MAP__);
+          }
+          await applyI18n(item.code);
+          showToast(item.code === 'en' ? 'Language switched to English' : (item.code === 'ru' ? 'Язык изменён на русский' : 'Language changed'), 'success');
         });
         frag.appendChild(btn);
       });
@@ -17979,6 +18658,19 @@ function bindCoverHoldZoom(wrapEl) {
 
     document.addEventListener('click', () => {
       uiLangDropdown.classList.remove('open');
+    });
+  }
+
+  const inputDeeplApiKey = document.getElementById('input-deepl-api-key');
+  if (inputDeeplApiKey) {
+    inputDeeplApiKey.value = localStorage.getItem('riff_deepl_api_key') || '';
+    inputDeeplApiKey.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (val) {
+        localStorage.setItem('riff_deepl_api_key', val);
+      } else {
+        localStorage.removeItem('riff_deepl_api_key');
+      }
     });
   }
 
@@ -18335,7 +19027,7 @@ function bindCoverHoldZoom(wrapEl) {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '44.0.0';
+    let currentAppVersion = '44.1.0';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -18785,6 +19477,11 @@ function bindCoverHoldZoom(wrapEl) {
     const inInput = isTextInput(e.target);
 
     if (e.code === 'Escape' || e.key === 'Escape') {
+      if (el.viewSettings && el.viewSettings.classList.contains('active')) {
+        e.preventDefault();
+        closeSettingsModal();
+        return;
+      }
       if (syncState && syncState.active) {
         e.preventDefault();
         closeSyncMode();
@@ -20617,6 +21314,7 @@ function bindCoverHoldZoom(wrapEl) {
     window.electronAPI.onYoutubePlaybackAuth((result) => {
       const loggedIn = !!(result && result.success && result.loggedIn);
       updateYoutubePlaybackAuthUI(loggedIn);
+      checkGoogleAuthStatus();
       if (loggedIn) showToast('YouTube playback sign-in saved.', 'success');
       else showToast((result && result.error) || 'YouTube playback sign-in was not completed.', 'error');
     });
@@ -20818,10 +21516,11 @@ function bindCoverHoldZoom(wrapEl) {
       btnYoutubePlaybackLogin.disabled = true;
       try {
         const result = await window.electronAPI.youtubePlaybackLogin();
-        if (result && result.success) {
-          showToast('Sign in to YouTube in the opened window, then close it to save your session.', 'info');
-        } else {
-          showToast((result && result.error) || 'Could not open YouTube sign-in.', 'error');
+        if (result && result.success && result.loggedIn) {
+          updateYoutubePlaybackAuthUI(true);
+          checkGoogleAuthStatus();
+        } else if (result && !result.success && result.error) {
+          showToast(result.error, 'error');
         }
       } catch (error) {
         showToast(`Could not open YouTube sign-in: ${error.message || error}`, 'error');
@@ -20839,6 +21538,7 @@ function bindCoverHoldZoom(wrapEl) {
         const result = await window.electronAPI.youtubePlaybackLogout();
         if (result && result.success) {
           updateYoutubePlaybackAuthUI(false);
+          checkGoogleAuthStatus();
           showToast('YouTube playback session removed from this device.', 'info');
         } else {
           showToast((result && result.error) || 'Could not sign out of YouTube playback.', 'error');
@@ -21246,7 +21946,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '44.0.0';
+    let appVer = '44.1.0';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -21340,15 +22040,20 @@ function bindCoverHoldZoom(wrapEl) {
       const rawTracks = Array.isArray(item.tracks) ? item.tracks : [];
       const tracks = rawTracks.map(t => {
         if (!t || typeof t !== 'object') return null;
+        const plat = (t.platform === 'soundcloud' || t.source === 'soundcloud') ? 'soundcloud' : 'ytmusic';
+        const hasValidUrl = typeof t.url === 'string' && /^https?:\/\//i.test(t.url) && !/results\?search_query=/i.test(t.url);
         return {
-          id: t.id || ('track_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+          id: (hasValidUrl && t.id) ? String(t.id) : ('sp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
           title: t.title || '',
           artist: t.artist || '',
           album: t.album || '',
           duration: Number(t.duration) || 0,
-          url: t.url || '',
+          url: hasValidUrl ? t.url : '',
+          thumbnail: t.cover || t.thumbnail || '',
           cover: t.cover || t.thumbnail || '',
-          source: t.source || t.platform || 'youtube'
+          platform: plat,
+          source: t.source || plat,
+          searchQuery: ((t.artist ? t.artist + ' - ' : '') + (t.title || '')).trim()
         };
       }).filter(Boolean);
       const cover = item.cover || '';
@@ -21550,6 +22255,220 @@ function bindCoverHoldZoom(wrapEl) {
       }, 350);
     };
   }
+
+  function updateAccountHeroColors(imgSrc) {
+    const hero = document.getElementById('tg-account-hero');
+    if (!hero || !imgSrc) return;
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 16;
+        c.height = 16;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 16, 16);
+        const data = ctx.getImageData(0, 0, 16, 16).data;
+        let rS = 0, gS = 0, bS = 0, cnt = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          if (a > 70 && (r + g + b) > 40 && (r + g + b) < 700) {
+            rS += r; gS += g; bS += b; cnt++;
+          }
+        }
+        const avgR = cnt > 0 ? Math.round(rS / cnt) : 120;
+        const avgG = cnt > 0 ? Math.round(gS / cnt) : 60;
+        const avgB = cnt > 0 ? Math.round(bS / cnt) : 90;
+        const hsl = rgbToHsl(avgR, avgG, avgB);
+        const h = hsl.h;
+        const s = Math.max(24, Math.min(54, hsl.s || 40));
+        hero.style.setProperty('--acc-c1', hslToHex(h, s, 38));
+        hero.style.setProperty('--acc-c2', hslToHex((h + 8) % 360, Math.max(18, s - 8), 18));
+      } catch (_) {}
+    };
+    img.src = imgSrc;
+  }
+
+  let devsizeMemes = [];
+  let lastMemeUrl = '';
+  async function loadEasterMemes() {
+    const memeEl = document.getElementById('tg-easter-meme');
+    if (!memeEl) return;
+    if (devsizeMemes.length === 0) {
+      try {
+        const port = state.serverPort || 38472;
+        const res = await fetch(`http://127.0.0.1:${port}/api/devsize-memes`);
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.files) && data.files.length > 0) {
+          devsizeMemes = data.files;
+          const initial = devsizeMemes[Math.floor(Math.random() * devsizeMemes.length)];
+          lastMemeUrl = initial;
+          memeEl.src = initial;
+        }
+      } catch (_) {}
+    } else if (!memeEl.src || memeEl.src.endsWith('/')) {
+      const initial = devsizeMemes[Math.floor(Math.random() * devsizeMemes.length)];
+      lastMemeUrl = initial;
+      memeEl.src = initial;
+    }
+  }
+
+  const memeEl = document.getElementById('tg-easter-meme');
+  if (memeEl) {
+    let memeBusy = false;
+    memeEl.onclick = (e) => {
+      e.stopPropagation();
+      if (memeBusy || !devsizeMemes || !devsizeMemes.length) return;
+      memeBusy = true;
+      let pool = devsizeMemes.filter(u => u !== lastMemeUrl);
+      if (!pool.length) pool = devsizeMemes;
+      const nextUrl = pool[Math.floor(Math.random() * pool.length)];
+      lastMemeUrl = nextUrl;
+      memeEl.classList.add('switching');
+      setTimeout(() => {
+        memeEl.src = nextUrl;
+        memeEl.onload = () => {
+          memeEl.classList.remove('switching');
+          memeBusy = false;
+        };
+        setTimeout(() => {
+          memeEl.classList.remove('switching');
+          memeBusy = false;
+        }, 150);
+      }, 120);
+    };
+  }
+
+  function syncLocalAccountUI() {
+    const nick = localStorage.getItem('riff_user_nickname') || 'User';
+    const avatar = localStorage.getItem('riff_user_avatar') || '../../assets/icon.png';
+    const navName = document.getElementById('settings-nav-account-name');
+    const nickInput = document.getElementById('account-nickname-input');
+    const navAvatar = document.getElementById('settings-nav-avatar');
+    const profAvatar = document.getElementById('account-profile-avatar');
+
+    if (navName) navName.textContent = nick;
+    if (nickInput && document.activeElement !== nickInput) nickInput.value = nick;
+    if (navAvatar) navAvatar.src = avatar;
+    if (profAvatar) profAvatar.src = avatar;
+
+    updateAccountHeroColors(avatar);
+    loadEasterMemes();
+  }
+  window.syncLocalAccountUI = syncLocalAccountUI;
+
+  const accountNicknameInput = document.getElementById('account-nickname-input');
+  if (accountNicknameInput) {
+    accountNicknameInput.addEventListener('input', (e) => {
+      const val = e.target.value;
+      localStorage.setItem('riff_user_nickname', val);
+      const navName = document.getElementById('settings-nav-account-name');
+      if (navName) navName.textContent = val.trim() || 'User';
+    });
+    accountNicknameInput.addEventListener('blur', () => {
+      if (!accountNicknameInput.value.trim()) {
+        accountNicknameInput.value = 'User';
+        localStorage.setItem('riff_user_nickname', 'User');
+        syncLocalAccountUI();
+      }
+    });
+  }
+
+  const btnPickAccountAvatar = document.getElementById('btn-pick-account-avatar');
+  if (btnPickAccountAvatar) {
+    btnPickAccountAvatar.addEventListener('click', async () => {
+      if (window.electronAPI && window.electronAPI.pickMedia) {
+        const url = await window.electronAPI.pickMedia();
+        if (url) {
+          localStorage.setItem('riff_user_avatar', url);
+          syncLocalAccountUI();
+        }
+      }
+    });
+  }
+
+  const btnResetAccountAvatar = document.getElementById('btn-reset-account-avatar');
+  if (btnResetAccountAvatar) {
+    btnResetAccountAvatar.addEventListener('click', () => {
+      localStorage.removeItem('riff_user_avatar');
+      syncLocalAccountUI();
+    });
+  }
+
+  const btnAccExportRfacc = document.getElementById('btn-acc-export-rfacc');
+  if (btnAccExportRfacc) {
+    btnAccExportRfacc.addEventListener('click', () => {
+      if (btnExportAccount) {
+        btnExportAccount.click();
+      }
+    });
+  }
+
+  const btnAccImportRfacc = document.getElementById('btn-acc-import-rfacc');
+  if (btnAccImportRfacc) {
+    btnAccImportRfacc.addEventListener('click', () => {
+      if (btnImportAccount) {
+        btnImportAccount.click();
+      }
+    });
+  }
+
+  const btnAccOpenIntegrations = document.getElementById('btn-acc-open-integrations');
+  if (btnAccOpenIntegrations) {
+    btnAccOpenIntegrations.addEventListener('click', () => {
+      showSettingsCategory('integrations');
+    });
+  }
+
+  document.querySelectorAll('#acc-orbital-widget .acc-satellite-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const plat = btn.dataset.platform;
+      if (plat === 'spotify') openSpotifyImportModal();
+      else if (plat === 'youtube' || plat === 'ytmusic' || plat === 'soundcloud') openLinkImportModal(plat);
+      else if (plat === 'lastfm') {
+        const b = document.getElementById('btn-lastfm-open-modal');
+        if (b) b.click();
+        else showSettingsCategory('integrations');
+      } else if (plat === 'discord') {
+        showSettingsCategory('integrations');
+      } else if (plat === 'wave') {
+        playMyWave();
+      } else {
+        showSettingsCategory('integrations');
+      }
+    };
+  });
+
+  const btnAccLogout = document.getElementById('btn-acc-logout');
+  if (btnAccLogout) {
+    btnAccLogout.addEventListener('click', async () => {
+      const confirmed = await confirmChain({
+        title: 'Log out of account?',
+        message: 'This will sign you out and clear your local account data (playlists, favorites, history, and settings). Make sure you exported your .rfacc backup first!',
+        confirmLabel: 'Log out',
+        seconds: 3
+      });
+      if (!confirmed) return;
+
+      try { await window.electronAPI?.googleLogout?.(); } catch (_) {}
+      try { localStorage.clear(); } catch (_) {}
+      if (window.electronAPI?.storageSaveSync) {
+        try { window.electronAPI.storageSaveSync({}); } catch (_) {}
+      }
+      showToast('Logged out! Restarting...', 'info');
+      setTimeout(() => {
+        if (window.electronAPI && window.electronAPI.restartApp) {
+          window.electronAPI.restartApp();
+        } else {
+          window.location.reload();
+        }
+      }, 350);
+    });
+  }
+
+  syncLocalAccountUI();
 
   const linkImportBtns = document.querySelectorAll('.btn-open-link-import, #btn-open-link-import');
   linkImportBtns.forEach(btn => {
@@ -23703,6 +24622,7 @@ function bindCoverHoldZoom(wrapEl) {
   const viewDiscoverEl = document.getElementById('view-discover');
   if (viewDiscoverEl) {
     viewDiscoverEl.addEventListener('wheel', (e) => {
+      if (document.body.classList.contains('home-spotify')) return;
       if (!isDiscoverActive() || isFormInputFocused()) return;
       if (el.searchResultsContainer && !el.searchResultsContainer.classList.contains('hidden')) return;
       if (e.target.closest('#search-results-container')) return;
@@ -23980,6 +24900,8 @@ function bindCoverHoldZoom(wrapEl) {
     }, { passive: true });
   }
 
+  function applyCoverTintToCard() {}
+
   function renderQuickAccess() {
     const sec = document.getElementById('sp-quick-sec');
     const container = document.getElementById('sp-quick');
@@ -24026,6 +24948,7 @@ function bindCoverHoldZoom(wrapEl) {
       const tile = document.createElement('div');
       tile.className = 'sp-tile';
       const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || '';
+      applyCoverTintToCard(tile, thumb);
       const tileCover = document.createElement('div');
       tileCover.className = 'sp-tile-cover';
       appendCoverImage(tileCover, thumb);
@@ -24053,6 +24976,8 @@ function bindCoverHoldZoom(wrapEl) {
       playlists.forEach(pl => {
         const tile = document.createElement('div');
         tile.className = 'sp-tile';
+        const plThumb = pl.cover || (pl.tracks && pl.tracks[0] ? getTrackThumbUrl(pl.tracks[0]) : '');
+        applyCoverTintToCard(tile, plThumb);
         const coverDiv = document.createElement('div');
         coverDiv.className = 'playlist-cover-art';
         renderPlaylistCover(coverDiv, pl, 64);
@@ -24172,6 +25097,7 @@ function bindCoverHoldZoom(wrapEl) {
   function spCard({ cover, gridCovers, title, sub, onClick, isExplicit = false }) {
     const card = document.createElement('div');
     card.className = 'sp-card';
+    applyCoverTintToCard(card, (gridCovers && gridCovers[0]) || cover);
 
     const coverWrap = document.createElement('div');
     coverWrap.className = 'sp-card-cover';
@@ -26005,14 +26931,31 @@ function bindCoverHoldZoom(wrapEl) {
     const btnImport = document.getElementById('btn-spotify-promo-import');
     const btnClose = document.getElementById('btn-spotify-promo-close');
     if (!card || !btnImport || !btnClose) return;
-    if (localStorage.getItem('riff_spotify_promo_dismissed') !== '1') card.hidden = false;
-    btnImport.addEventListener('click', () => {
-      if (typeof openSpotifyImportModal === 'function') openSpotifyImportModal();
-    });
-    btnClose.addEventListener('click', () => {
+    const isDismissed = localStorage.getItem('riff_spotify_promo_dismissed') === '1' || (Array.isArray(state.playlists) && state.playlists.length > 0);
+    const dismissForever = () => {
       card.hidden = true;
+      card.classList.add('hidden');
       localStorage.setItem('riff_spotify_promo_dismissed', '1');
+      try {
+        if (window.electronAPI?.storageSaveSync && window.__RIFF_STORAGE_MAP__) {
+          window.__RIFF_STORAGE_MAP__['riff_spotify_promo_dismissed'] = '1';
+          window.electronAPI.storageSaveSync(window.__RIFF_STORAGE_MAP__);
+        }
+      } catch (_) {}
+    };
+    if (isDismissed) {
+      dismissForever();
+      return;
+    }
+    card.hidden = false;
+    card.classList.remove('hidden');
+    btnImport.addEventListener('click', () => {
+      dismissForever();
+      localStorage.setItem('riff_settings_cat', 'integrations');
+      switchView('settings');
+      if (typeof showSettingsCategory === 'function') showSettingsCategory('integrations');
     });
+    btnClose.addEventListener('click', dismissForever);
   }
 
   function initQueuePanel() {
@@ -26024,11 +26967,16 @@ function bindCoverHoldZoom(wrapEl) {
     panel.className = 'np-queue-panel';
     panel.innerHTML = `
       <div class="np-queue-head">
-        <div class="np-queue-tabs">
-          <button type="button" class="np-queue-tab active" data-tab="queue">Queue</button>
-          <button type="button" class="np-queue-tab" data-tab="recent">Recently played</button>
-        </div>
-        <button type="button" class="btn-icon-pill np-queue-close" aria-label="Close">
+        <nav class="np-queue-tabs" id="np-queue-tabs">
+          <button type="button" class="np-queue-tab active" data-tab="queue">
+            <span data-i18n>Queue</span>
+          </button>
+          <button type="button" class="np-queue-tab" data-tab="recent">
+            <span data-i18n>Recently played</span>
+          </button>
+          <span class="np-queue-tab-line" id="np-queue-tab-line"></span>
+        </nav>
+        <button type="button" class="btn-icon-pill np-queue-close" aria-label="Close" title="Close">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
@@ -26036,8 +26984,24 @@ function bindCoverHoldZoom(wrapEl) {
     document.body.appendChild(panel);
 
     const body = panel.querySelector('#np-queue-body');
+    const tabsNav = panel.querySelector('#np-queue-tabs');
+    const tabLine = panel.querySelector('#np-queue-tab-line');
     let tab = 'queue';
     let signature = '';
+
+    const updateTabLine = () => {
+      const activeBtn = tabsNav ? tabsNav.querySelector('.np-queue-tab.active') : null;
+      if (!activeBtn || !tabLine || !tabsNav) return;
+      const navRect = tabsNav.getBoundingClientRect();
+      const btnRect = activeBtn.getBoundingClientRect();
+      const scale = parseFloat(document.documentElement.style.getPropertyValue('--app-scale')) || 1;
+      if (navRect.width > 0 && btnRect.width > 0) {
+        const lineW = Math.min(44, Math.max(28, (btnRect.width / scale) * 0.45));
+        const leftPx = ((btnRect.left - navRect.left) / scale) + ((btnRect.width / scale) - lineW) / 2;
+        tabLine.style.width = `${lineW.toFixed(1)}px`;
+        tabLine.style.transform = `translate3d(${leftPx.toFixed(1)}px, 0, 0)`;
+      }
+    };
 
     const makeRow = (track, onClick, playing) => {
       const row = document.createElement('div');
@@ -26057,7 +27021,7 @@ function bindCoverHoldZoom(wrapEl) {
       info.className = 'np-queue-info';
       const title = document.createElement('span');
       title.className = 'np-queue-title';
-      title.textContent = track.title || 'untitled';
+      title.textContent = track.title || 'Untitled';
       const artist = document.createElement('span');
       artist.className = 'np-queue-artist';
       artist.textContent = track.artist || '';
@@ -26070,29 +27034,34 @@ function bindCoverHoldZoom(wrapEl) {
     const heading = (text) => {
       const h = document.createElement('div');
       h.className = 'np-queue-heading';
-      h.textContent = text;
+      h.textContent = typeof t === 'function' ? t(text) : text;
       return h;
     };
 
-    const render = () => {
+    const render = (animateSwitch = false) => {
       body.innerHTML = '';
+      if (animateSwitch && !document.body.classList.contains('perf')) {
+        body.style.animation = 'none';
+        void body.offsetWidth;
+        body.style.animation = 'artistPaneSlideIn 220ms cubic-bezier(0.2, 0, 0, 1) both';
+      }
       const current = state.currentTrack;
       if (tab === 'recent') {
         const recent = (state.history || []).filter(Boolean).slice(0, 40);
         if (!recent.length) {
           const empty = document.createElement('div');
           empty.className = 'np-queue-empty';
-          empty.textContent = 'Nothing played yet';
+          empty.textContent = typeof t === 'function' ? t('Nothing played yet') : 'Nothing played yet';
           body.appendChild(empty);
           return;
         }
-        recent.forEach(t => body.appendChild(makeRow(t, () => playTrack(t, recent, recent.indexOf(t)), false)));
+        recent.forEach(tr => body.appendChild(makeRow(tr, () => playTrack(tr, recent, recent.indexOf(tr)), false)));
         return;
       }
       if (!current) {
         const empty = document.createElement('div');
         empty.className = 'np-queue-empty';
-        empty.textContent = 'Nothing is playing';
+        empty.textContent = typeof t === 'function' ? t('Nothing is playing') : 'Nothing is playing';
         body.appendChild(empty);
         return;
       }
@@ -26102,14 +27071,14 @@ function bindCoverHoldZoom(wrapEl) {
       const upcoming = (state.queue || []).slice(start, start + 50);
       if (upcoming.length) {
         body.appendChild(heading('Next up'));
-        upcoming.forEach((t, i) => {
+        upcoming.forEach((tr, i) => {
           const idx = start + i;
-          body.appendChild(makeRow(t, () => playTrack(state.queue[idx], state.queue, idx), false));
+          body.appendChild(makeRow(tr, () => playTrack(state.queue[idx], state.queue, idx), false));
         });
       } else {
         const empty = document.createElement('div');
         empty.className = 'np-queue-empty';
-        empty.textContent = 'Nothing queued next';
+        empty.textContent = typeof t === 'function' ? t('Nothing queued next') : 'Nothing queued next';
         body.appendChild(empty);
       }
     };
@@ -26122,12 +27091,13 @@ function bindCoverHoldZoom(wrapEl) {
       return [tab, cur ? getTrackCanonicalId(cur) : '', state.queueIndex, q.length, upcoming, (state.history || []).length].join('|');
     };
 
-    const refresh = () => {
+    const refresh = (animateSwitch = false) => {
       if (!panel.classList.contains('open')) return;
       const sig = currentSignature();
-      if (sig === signature) return;
+      if (sig === signature && !animateSwitch) return;
       signature = sig;
-      render();
+      render(animateSwitch);
+      requestAnimationFrame(updateTabLine);
     };
 
     const setOpen = (open) => {
@@ -26135,21 +27105,25 @@ function bindCoverHoldZoom(wrapEl) {
       btn.classList.toggle('active', open);
       localStorage.setItem('riff_queue_panel_open', open ? '1' : '0');
       signature = '';
-      refresh();
+      refresh(false);
+      setTimeout(updateTabLine, 40);
     };
 
     btn.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
     panel.querySelector('.np-queue-close').addEventListener('click', () => setOpen(false));
-    panel.querySelectorAll('.np-queue-tab').forEach(t => {
-      t.addEventListener('click', () => {
-        tab = t.dataset.tab;
-        panel.querySelectorAll('.np-queue-tab').forEach(x => x.classList.toggle('active', x === t));
+    panel.querySelectorAll('.np-queue-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', () => {
+        if (tab === tabBtn.dataset.tab) return;
+        tab = tabBtn.dataset.tab;
+        panel.querySelectorAll('.np-queue-tab').forEach(x => x.classList.toggle('active', x === tabBtn));
+        updateTabLine();
         signature = '';
-        refresh();
+        refresh(true);
       });
     });
-    setInterval(refresh, 700);
-    if (localStorage.getItem('riff_queue_panel_open') === '1') setOpen(true);
+    window.addEventListener('resize', updateTabLine);
+    setInterval(() => refresh(false), 700);
+    localStorage.removeItem('riff_queue_panel_open');
   }
 
   function initSearchFilterChips() {
@@ -26218,13 +27192,374 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
-  loadPlugins();
-  fetchPersonalVibe();
+  const SIDEBAR_PINNED_TRACKS_KEY = 'riff_sidebar_pinned_tracks';
+  function getSidebarPinnedTracks() {
+    const arr = safeJson(SIDEBAR_PINNED_TRACKS_KEY, []);
+    return Array.isArray(arr) ? arr : [];
+  }
+  function isTrackPinnedToSidebar(track) {
+    if (!track) return false;
+    const cid = getTrackCanonicalId(track);
+    return getSidebarPinnedTracks().some(t => getTrackCanonicalId(t) === cid || isSameTrack(t, track));
+  }
+  function togglePinTrackToSidebar(track) {
+    if (!track) return false;
+    const list = getSidebarPinnedTracks();
+    const cid = getTrackCanonicalId(track);
+    const idx = list.findIndex(t => getTrackCanonicalId(t) === cid || isSameTrack(t, track));
+    let pinned = false;
+    if (idx >= 0) {
+      list.splice(idx, 1);
+    } else {
+      list.unshift({
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        thumbnail: getTrackThumbUrl(track) || track.thumbnail || track.cover || '',
+        cover: track.cover || track.thumbnail || '',
+        url: track.url || '',
+        platform: track.platform || state.platform || 'ytmusic',
+        searchQuery: track.searchQuery || ''
+      });
+      pinned = true;
+    }
+    try { localStorage.setItem(SIDEBAR_PINNED_TRACKS_KEY, JSON.stringify(list.slice(0, 50))); } catch (_) {}
+    renderSidebarLibraryFeed();
+    showToast(pinned ? 'Pinned to sidebar' : 'Unpinned from sidebar', 'info');
+    return pinned;
+  }
+
+  let currentSidebarLibFilter = 'playlists';
+
+  function renderSidebarLibraryFeed(forceAnim = false) {
+    const feed = document.getElementById('sidebar-library-feed');
+    if (!feed || !document.body.classList.contains('sidebar-expanded')) return;
+
+    const sigParts = [
+      currentSidebarLibFilter,
+      (state.favorites || []).length,
+      getSidebarPinnedTracks().map(t => t.id || t.title).join(','),
+      (state.playlists || []).map(p => `${p.id}:${p.name}:${(p.tracks || []).length}:${p.cover || ''}`).join('|'),
+      (typeof getSavedAlbums === 'function' ? getSavedAlbums() : []).map(a => a.id || a.title).join(','),
+      currentSidebarLibFilter === 'queue' ? `${state.currentTrack?.id || ''}:${state.queueIndex}:${(state.queue || []).length}:${(state.history || []).length}` : ''
+    ].join('::');
+    if (!forceAnim && feed._lastSig === sigParts && feed.children.length > 0) {
+      const curId = state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '';
+      feed.querySelectorAll('.sb-lib-row').forEach(r => {
+        if (r.dataset.viewTarget) {
+          r.classList.toggle('active', state.currentView === r.dataset.viewTarget);
+        } else if (r.dataset.playlistId) {
+          r.classList.toggle('active', state.currentView === 'playlist-detail' && state.currentPlaylistId === r.dataset.playlistId);
+        } else if (r.dataset.canonicalId) {
+          r.classList.toggle('playing', Boolean(curId && r.dataset.canonicalId === curId));
+        }
+      });
+      const btnSbSet = document.getElementById('btn-sb-settings');
+      if (btnSbSet) btnSbSet.classList.toggle('active', state.currentView === 'settings');
+      return;
+    }
+    feed._lastSig = sigParts;
+
+    feed.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    const pinSvg = '<svg class="sb-lib-pin-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>';
+
+    const makeTrackCard = (tr, list, idx, opts = {}) => {
+      const row = document.createElement('div');
+      const isPlaying = state.currentTrack && isSameTrack(state.currentTrack, tr);
+      row.className = 'sb-lib-row' + (isPlaying ? ' playing' : '');
+      row.dataset.canonicalId = getTrackCanonicalId(tr);
+      if (!forceAnim) row.classList.add('no-sb-anim');
+      const thumb = typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(tr) : (tr.thumbnail || tr.cover || '');
+      row.innerHTML = `
+        <div class="sb-lib-cover">
+          ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'}
+        </div>
+        <div class="sb-lib-info">
+          <span class="sb-lib-title">${escapeHtml(tr.title || 'Untitled')}</span>
+          <span class="sb-lib-sub">${opts.pinned ? pinSvg : ''}${escapeHtml(tr.artist || 'Unknown artist')}</span>
+        </div>
+        ${opts.onAction ? `<button type="button" class="sb-lib-row-action" title="${escapeHtml(opts.actionTitle || '')}">${opts.actionIcon}</button>` : ''}
+      `;
+      if (opts.onAction) {
+        const actBtn = row.querySelector('.sb-lib-row-action');
+        if (actBtn) actBtn.addEventListener('click', (e) => { e.stopPropagation(); opts.onAction(); });
+      }
+      row.addEventListener('click', () => playTrack(tr, list, idx));
+      row.addEventListener('contextmenu', (e) => openTrackContextMenu(e, tr, { row, index: idx }));
+      return row;
+    };
+
+    if (currentSidebarLibFilter === 'playlists') {
+      const likedRow = document.createElement('div');
+      likedRow.className = 'sb-lib-row' + (state.currentView === 'favorites' ? ' active' : '');
+      likedRow.dataset.viewTarget = 'favorites';
+      if (!forceAnim) likedRow.classList.add('no-sb-anim');
+      const favCount = (state.favorites || []).length;
+      likedRow.innerHTML = `
+        <div class="sb-lib-cover liked-grad">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        </div>
+        <div class="sb-lib-info">
+          <span class="sb-lib-title">${escapeHtml(t('Liked songs'))}</span>
+          <span class="sb-lib-sub">${pinSvg}<span>${favCount} ${favCount === 1 ? 'song' : 'songs'}</span></span>
+        </div>
+      `;
+      likedRow.addEventListener('click', () => switchView('favorites'));
+      frag.appendChild(likedRow);
+
+      const pinnedTracks = getSidebarPinnedTracks();
+      if (pinnedTracks.length > 0) {
+        pinnedTracks.forEach((tr, idx) => {
+          frag.appendChild(makeTrackCard(tr, pinnedTracks, idx, {
+            pinned: true,
+            actionTitle: 'Unpin from sidebar',
+            actionIcon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+            onAction: () => togglePinTrackToSidebar(tr)
+          }));
+        });
+      }
+
+      (state.playlists || []).forEach(pl => {
+        const row = document.createElement('div');
+        row.className = 'sb-lib-row' + (state.currentView === 'playlist-detail' && state.currentPlaylistId === pl.id ? ' active' : '');
+        row.dataset.playlistId = pl.id;
+        if (!forceAnim) row.classList.add('no-sb-anim');
+        const coverBox = document.createElement('div');
+        coverBox.className = 'sb-lib-cover';
+        renderPlaylistCover(coverBox, pl, 60);
+        const info = document.createElement('div');
+        info.className = 'sb-lib-info';
+        const cnt = (pl.tracks || []).length;
+        info.innerHTML = `
+          <span class="sb-lib-title">${escapeHtml(pl.name || 'Untitled')}</span>
+          <span class="sb-lib-sub">${cnt} ${cnt === 1 ? 'track' : 'tracks'}</span>
+        `;
+        row.append(coverBox, info);
+        row.addEventListener('click', () => openPlaylistDetail(pl.id));
+        frag.appendChild(row);
+      });
+    } else if (currentSidebarLibFilter === 'albums') {
+      if (localStorage.getItem('riff_show_local') !== 'false') {
+        const localRow = document.createElement('div');
+        localRow.className = 'sb-lib-row' + (state.currentView === 'local' ? ' active' : '');
+        localRow.dataset.viewTarget = 'local';
+        if (!forceAnim) localRow.classList.add('no-sb-anim');
+        const localCnt = (state.localTracks && state.localTracks.length) || 0;
+        localRow.innerHTML = `
+          <div class="sb-lib-cover local-grad">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="sb-lib-info">
+            <span class="sb-lib-title">${escapeHtml(t('My files'))}</span>
+            <span class="sb-lib-sub">${localCnt} ${localCnt === 1 ? 'file' : 'files'}</span>
+          </div>
+        `;
+        localRow.addEventListener('click', () => switchView('local'));
+        frag.appendChild(localRow);
+      }
+
+      const albums = typeof getSavedAlbums === 'function' ? getSavedAlbums() : [];
+      if (albums.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-hint';
+        empty.style.padding = '28px 12px';
+        empty.textContent = t('No saved albums yet');
+        frag.appendChild(empty);
+      } else {
+        albums.forEach(alb => {
+          const row = document.createElement('div');
+          row.className = 'sb-lib-row';
+          if (!forceAnim) row.classList.add('no-sb-anim');
+          row.innerHTML = `
+            <div class="sb-lib-cover">
+              ${alb.cover ? `<img src="${escapeHtml(alb.cover)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>'}
+            </div>
+            <div class="sb-lib-info">
+              <span class="sb-lib-title">${escapeHtml(alb.title || 'Album')}</span>
+              <span class="sb-lib-sub">${escapeHtml(alb.artist || '')}</span>
+            </div>
+          `;
+          row.addEventListener('click', () => openAlbum(alb));
+          frag.appendChild(row);
+        });
+      }
+    } else if (currentSidebarLibFilter === 'queue') {
+      if (state.currentTrack) {
+        const lblNow = document.createElement('div');
+        lblNow.className = 'sb-lib-section-label';
+        lblNow.textContent = t('Now playing');
+        frag.appendChild(lblNow);
+        frag.appendChild(makeTrackCard(state.currentTrack, state.queue, state.queueIndex));
+      }
+      const startIdx = Math.max(0, state.queueIndex + 1);
+      const upcoming = (state.queue || []).slice(startIdx, startIdx + 40);
+      if (upcoming.length > 0) {
+        const lblNext = document.createElement('div');
+        lblNext.className = 'sb-lib-section-label';
+        lblNext.textContent = t('Next up');
+        frag.appendChild(lblNext);
+        upcoming.forEach((tr, i) => {
+          const qIdx = startIdx + i;
+          frag.appendChild(makeTrackCard(tr, state.queue, qIdx, {
+            actionTitle: 'Remove from queue',
+            actionIcon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+            onAction: () => { removeTrackFromQueue(qIdx); renderSidebarLibraryFeed(); }
+          }));
+        });
+      }
+      const recent = (state.history || []).slice(0, 20);
+      if (recent.length > 0) {
+        const lblRec = document.createElement('div');
+        lblRec.className = 'sb-lib-section-label';
+        lblRec.textContent = t('Recently played');
+        frag.appendChild(lblRec);
+        recent.forEach((tr, idx) => {
+          frag.appendChild(makeTrackCard(tr, recent, idx));
+        });
+      }
+      if (!state.currentTrack && upcoming.length === 0 && recent.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-hint';
+        empty.style.padding = '28px 12px';
+        empty.textContent = t('Queue is empty');
+        frag.appendChild(empty);
+      }
+    }
+
+    Array.from(frag.querySelectorAll('.sb-lib-row')).forEach((r, i) => r.style.setProperty('--i', String(i)));
+    feed.appendChild(frag);
+    feed.classList.toggle('fade-top', feed.scrollTop > 6);
+    const btnSbSettings = document.getElementById('btn-sb-settings');
+    if (btnSbSettings) btnSbSettings.classList.toggle('active', state.currentView === 'settings');
+  }
+  window.renderSidebarLibraryFeed = renderSidebarLibraryFeed;
+
+  function initSidebarResizeAndLibrary() {
+    const edge = document.getElementById('sidebar-resize-edge');
+    const sidebar = document.getElementById('sidebar');
+    const feed = document.getElementById('sidebar-library-feed');
+    if (!edge || !sidebar) return;
+
+    if (feed && !feed._scrollMaskBound) {
+      feed._scrollMaskBound = true;
+      feed.addEventListener('scroll', () => {
+        feed.classList.toggle('fade-top', feed.scrollTop > 6);
+      }, { passive: true });
+    }
+
+    const btnSbPresets = document.getElementById('btn-sb-presets');
+    const btnSbNewPl = document.getElementById('btn-sb-new-playlist');
+    const btnSbSettings = document.getElementById('btn-sb-settings');
+
+    if (btnSbPresets) {
+      btnSbPresets.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDrawerState = openDrawerState === 'presets' ? null : 'presets';
+        applyDrawerState(btnSbPresets);
+      });
+    }
+    if (btnSbNewPl) {
+      btnSbNewPl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (el.btnNewPlaylist) el.btnNewPlaylist.click();
+      });
+    }
+    if (btnSbSettings) {
+      btnSbSettings.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchView('settings');
+      });
+    }
+
+    const btnSbRadio = document.getElementById('btn-sb-banner-radio');
+    if (btnSbRadio) {
+      btnSbRadio.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        playMyWave();
+      });
+    }
+
+    const EXPAND_THRESHOLD = 180;
+    const applySidebarWidth = (w, save = false) => {
+      if (w >= EXPAND_THRESHOLD) {
+        const clamped = Math.max(256, Math.min(390, Math.round(w)));
+        document.documentElement.style.setProperty('--sidebar-w', `${clamped}px`);
+        document.body.classList.add('sidebar-expanded');
+        renderSidebarLibraryFeed();
+        if (save) localStorage.setItem('riff_sidebar_width', String(clamped));
+      } else {
+        document.documentElement.style.setProperty('--sidebar-w', '84px');
+        document.body.classList.remove('sidebar-expanded');
+        if (save) localStorage.setItem('riff_sidebar_width', '84');
+        requestAnimationFrame(() => updateNavIndicator(false));
+      }
+      if (typeof resizeCanvases === 'function') requestAnimationFrame(resizeCanvases);
+    };
+
+    if (localStorage.getItem('riff_sidebar_default_wide_v2') !== '1') {
+      localStorage.setItem('riff_sidebar_default_wide_v2', '1');
+      localStorage.setItem('riff_sidebar_width', '288');
+    }
+    const savedW = parseInt(localStorage.getItem('riff_sidebar_width') || '288', 10);
+    applySidebarWidth(savedW, false);
+
+    let startX = 0, startW = 84, dragging = false;
+    edge.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      startX = e.clientX;
+      startW = sidebar.getBoundingClientRect().width;
+      edge.setPointerCapture(e.pointerId);
+      edge.classList.add('dragging');
+      document.body.classList.add('is-resizing-panel');
+      e.preventDefault();
+    });
+
+    edge.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      applySidebarWidth(startW + (e.clientX - startX), false);
+    });
+
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      try { edge.releasePointerCapture(e.pointerId); } catch (_) {}
+      edge.classList.remove('dragging');
+      document.body.classList.remove('is-resizing-panel');
+      const finalW = document.body.classList.contains('sidebar-expanded')
+        ? parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'), 10) || 288
+        : 84;
+      applySidebarWidth(finalW, true);
+    };
+    edge.addEventListener('pointerup', endDrag);
+    edge.addEventListener('pointercancel', endDrag);
+
+    edge.addEventListener('dblclick', () => {
+      const isExp = document.body.classList.contains('sidebar-expanded');
+      applySidebarWidth(isExp ? 84 : 288, true);
+    });
+
+    const tabsWrap = document.getElementById('sidebar-lib-chips');
+    const tabBtns = tabsWrap ? Array.from(tabsWrap.querySelectorAll('.sb-horiz-tab')) : [];
+    tabBtns.forEach((tabBtn) => {
+      tabBtn.addEventListener('click', () => {
+        currentSidebarLibFilter = tabBtn.dataset.libFilter || 'playlists';
+        tabBtns.forEach(b => b.classList.toggle('active', b === tabBtn));
+        renderSidebarLibraryFeed(true);
+      });
+    });
+  }
+
   initHomeHero();
   applyHomeLayout();
   applySidebarOrder();
   applyHomeSectionsOrder();
   initSidebarOrderCustomizer();
+  initSidebarResizeAndLibrary();
   renderBlockedItemsSettings();
   initSearchFilterChips();
   initSearchHistory();
@@ -26237,10 +27572,8 @@ function bindCoverHoldZoom(wrapEl) {
   updateOfflineStorageUI();
   updateMusicFolderUI();
   updateDownloadFolderUI();
-  checkToolsStatus(false);
   setLyricsEmpty(true);
   updateLyricsTranslationUI();
-  loadCustomThemes();
   applyCustomStyles();
   initProxyManager();
   initSongQualitySetting();
@@ -26271,6 +27604,20 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   emitPluginEvent('ready');
+
+  const runDeferredStartup = () => {
+    if (runDeferredStartup._ran) return;
+    runDeferredStartup._ran = true;
+    loadPlugins();
+    fetchPersonalVibe();
+    loadCustomThemes();
+    checkToolsStatus(false);
+  };
+  if (window.__riffSplashDone) setTimeout(runDeferredStartup, 50);
+  else {
+    window.addEventListener('riff-splash-done', () => setTimeout(runDeferredStartup, 40), { once: true });
+    setTimeout(runDeferredStartup, 1000);
+  }
 });
 
 document.addEventListener('DOMContentLoaded', () => {

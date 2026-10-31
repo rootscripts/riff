@@ -5,7 +5,7 @@ const os = require('os');
 const http = require('http');
 const url = require('url');
 const { pathToFileURL } = url;
-const { spawn, execFile, execSync } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const {
@@ -53,7 +53,13 @@ const { getSystemAudioOutputInfo } = require('../shared/audio-output');
 const { log, tail, LOG_DIR } = require('../shared/logger');
 const logger = { log, tail, LOG_DIR, error: (msg, err) => log('ERROR', `${msg}: ${err && err.message ? err.message : err}`) };
 
+try {
+  if (process.stdout && typeof process.stdout.on === 'function') process.stdout.on('error', () => {});
+  if (process.stderr && typeof process.stderr.on === 'function') process.stderr.on('error', () => {});
+} catch (_) {}
+
 process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'EPIPE' || /EPIPE|broken pipe/i.test(err.message || ''))) return;
   try { logger.error('Uncaught exception in main', err); } catch (_) {}
 });
 process.on('unhandledRejection', (reason) => {
@@ -94,13 +100,18 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-domain-reliability');
 app.commandLine.appendSwitch('disable-sync');
 app.commandLine.appendSwitch('disable-speech-api');
-// 384 MB was tight enough to crash the renderer on large libraries.
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024');
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disk-cache-size', '52428800');
-app.commandLine.appendSwitch('media-cache-size', '52428800');
+app.commandLine.appendSwitch('disk-cache-size', '25165824');
+app.commandLine.appendSwitch('media-cache-size', '25165824');
 
+setInterval(() => {
+  try {
+    session.defaultSession.clearCache().catch(() => {});
+    if (global.gc) global.gc();
+  } catch (_) {}
+}, 90000);
 app.on('ready', () => {
   const cleanUA = (app.userAgentFallback || '').replace(/\s*Electron\/[^\s]+/gi, '').replace(/\s*riff\/[^\s]+/gi, '');
   if (cleanUA) app.userAgentFallback = cleanUA;
@@ -134,27 +145,6 @@ if (process.argv.includes('lyrics') || process.argv.includes('--lyrics')) {
   runGUI();
 }
 
-// Extra instances get their own `<userData>-instance-<pid>` profile. Remove
-// the ones whose process is gone so they do not pile up on every launch.
-function pruneStaleInstanceDirs(baseUserData) {
-  const dir = path.dirname(baseUserData);
-  const prefix = `${path.basename(baseUserData)}-instance-`;
-  let names = [];
-  try { names = fs.readdirSync(dir); } catch (_) { return; }
-  for (const name of names) {
-    if (!name.startsWith(prefix)) continue;
-    const pid = Number(name.slice(prefix.length));
-    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
-    try {
-      process.kill(pid, 0);
-      continue;
-    } catch (e) {
-      if (e.code !== 'ESRCH') continue;
-    }
-    try { fs.rmSync(path.join(dir, name), { recursive: true, force: true }); } catch (_) {}
-  }
-}
-
 function runGUI() {
   const { startServer, PORT, getServerToken } = require('../server/server');
   const discordRPC = require('./discord');
@@ -163,11 +153,7 @@ function runGUI() {
   const allowMulti = !!readStartupConfig().multiInstance;
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock && !allowMulti) { app.quit(); return; }
-  if (!gotLock && allowMulti) {
-    const baseUserData = app.getPath('userData');
-    pruneStaleInstanceDirs(baseUserData);
-    app.setPath('userData', `${baseUserData}-instance-${process.pid}`);
-  }
+  if (!gotLock && allowMulti) app.setPath('userData', `${app.getPath('userData')}-instance-${process.pid}`);
   let youtubePlaybackWindow = null;
   app.on('second-instance', () => {
     if (allowMulti) return;
@@ -293,6 +279,14 @@ function runGUI() {
     }
   });
 
+  app.on('before-quit', () => {
+    if (storageFlushTimer) {
+      clearTimeout(storageFlushTimer);
+      storageFlushTimer = null;
+      if (latestStorageSnapshot) writeStorageDiskSync(latestStorageSnapshot);
+    }
+  });
+
   function readWindowState() {
     try {
       const raw = fs.readFileSync(windowStatePath, 'utf8');
@@ -392,8 +386,6 @@ function runGUI() {
                                    backgroundColor: firstRun ? '#8d5ef2' : '#000000',
                                    title: 'Riff',
                                    icon: path.join(__dirname, '../../assets', 'icon.png'),
-                                   // macOS keeps its native traffic lights; frame:false would remove
-                                   // them and the custom window buttons are hidden there.
                                    frame: IS_MAC,
                                    titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
                                    ...(IS_MAC ? { trafficLightPosition: { x: 14, y: 13 } } : {}),
@@ -455,7 +447,12 @@ function runGUI() {
     mainWindow.on('minimize', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('window-visibility', false);
+        if (global.gc) global.gc();
       }
+    });
+
+    mainWindow.on('blur', () => {
+      if (global.gc) global.gc();
     });
 
     mainWindow.on('restore', () => {
@@ -475,20 +472,13 @@ function runGUI() {
         mainWindow.webContents.send('window-visibility', true);
       }
     });
-    // move/resize fire continuously while dragging (every frame on macOS).
-    let persistTimer = null;
-    const persistWindowStateSoon = () => {
-      if (persistTimer) clearTimeout(persistTimer);
-      persistTimer = setTimeout(() => { persistTimer = null; persistWindowState(); }, 400);
-    };
-    mainWindow.on('resize', persistWindowStateSoon);
-    mainWindow.on('move', persistWindowStateSoon);
+    mainWindow.on('resize', persistWindowState);
+    mainWindow.on('move', persistWindowState);
     mainWindow.on('maximize', persistWindowState);
     mainWindow.on('unmaximize', persistWindowState);
     mainWindow.on('enter-full-screen', persistWindowState);
     mainWindow.on('leave-full-screen', persistWindowState);
     mainWindow.on('close', (e) => {
-      if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
       persistWindowState();
       if (trayOnClose && tray && !isQuitting) {
         e.preventDefault();
@@ -710,7 +700,7 @@ function runGUI() {
       async function extractLocalTrackMetadata(filePath) {
         if (!filePath || typeof filePath !== 'string') return null;
         const coversDir = path.join(app.getPath('userData'), 'local-covers');
-        await fs.promises.mkdir(coversDir, { recursive: true });
+        fs.mkdirSync(coversDir, { recursive: true });
 
         const fileHash = crypto.createHash('md5').update(filePath).digest('hex');
         const coverOut = path.join(coversDir, fileHash + '.jpg');
@@ -721,15 +711,11 @@ function runGUI() {
         let trackNum = 0;
         let duration = 0;
 
-        // Async reads: this runs for every file of an imported folder and the
-        // synchronous version (up to 12 MB per tag) froze the main process.
         let fd = null;
-        const readAt = async (buf, len, pos) => (await fd.read(buf, 0, len, pos)).bytesRead;
-        let hasCover = fs.existsSync(coverOut);
         try {
-          fd = await fs.promises.open(filePath, 'r');
+          fd = fs.openSync(filePath, 'r');
           const header = Buffer.alloc(10);
-          const bytesRead = await readAt(header, 10, 0);
+          const bytesRead = fs.readSync(fd, header, 0, 10, 0);
 
           if (bytesRead >= 10 && header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33) {
             const id3Version = header[3];
@@ -737,7 +723,7 @@ function runGUI() {
             const tagSize = (header[6] << 21) | (header[7] << 14) | (header[8] << 7) | header[9];
             const readLimit = Math.min(tagSize, 12 * 1024 * 1024);
             const tagBuf = Buffer.alloc(readLimit);
-            await readAt(tagBuf, tagBuf.length, 10);
+            fs.readSync(fd, tagBuf, 0, tagBuf.length, 10);
 
             let offset = 0;
             if (id3Flags & 0x40) {
@@ -802,7 +788,7 @@ function runGUI() {
               } else if (frameId === 'TLEN' && !duration) {
                 const ms = parseInt(decodeId3Text(frameData).trim(), 10);
                 if (!isNaN(ms) && ms > 0) duration = ms / 1000;
-              } else if (frameId === 'APIC' && !hasCover) {
+              } else if (frameId === 'APIC' && !fs.existsSync(coverOut)) {
                 try {
                   const enc = frameData[0];
                   let p = 1;
@@ -819,8 +805,7 @@ function runGUI() {
                   if (p < frameData.length) {
                     const imgBuf = frameData.subarray(p);
                     if (imgBuf.length > 32) {
-                      await fs.promises.writeFile(coverOut, imgBuf);
-                      hasCover = true;
+                      fs.writeFileSync(coverOut, imgBuf);
                     }
                   }
                 } catch (e) {}
@@ -832,7 +817,7 @@ function runGUI() {
             let isLast = false;
             while (!isLast) {
               const blkHeader = Buffer.alloc(4);
-              if (await readAt(blkHeader, 4, pos) < 4) break;
+              if (fs.readSync(fd, blkHeader, 0, 4, pos) < 4) break;
               pos += 4;
               isLast = (blkHeader[0] & 0x80) !== 0;
               const blockType = blkHeader[0] & 0x7F;
@@ -840,7 +825,7 @@ function runGUI() {
 
               if (blockType === 0 && blockLength >= 18) {
                 const sBuf = Buffer.alloc(Math.min(blockLength, 34));
-                await readAt(sBuf, sBuf.length, pos);
+                fs.readSync(fd, sBuf, 0, sBuf.length, pos);
                 const sampleRate = (sBuf[10] << 12) | (sBuf[11] << 4) | (sBuf[12] >> 4);
                 const totalSamples = ((sBuf[13] & 0x0f) * 0x100000000) +
                   (sBuf[14] << 24 >>> 0) + (sBuf[15] << 16) + (sBuf[16] << 8) + sBuf[17];
@@ -849,7 +834,7 @@ function runGUI() {
                 }
               } else if (blockType === 4) {
                 const vBuf = Buffer.alloc(Math.min(blockLength, 1024 * 1024));
-                await readAt(vBuf, vBuf.length, pos);
+                fs.readSync(fd, vBuf, 0, vBuf.length, pos);
                 let vPos = 0;
                 if (vPos + 4 <= vBuf.length) {
                   const vendorLen = vBuf.readUInt32LE(vPos);
@@ -878,10 +863,10 @@ function runGUI() {
                     }
                   }
                 }
-              } else if (blockType === 6 && !hasCover) {
+              } else if (blockType === 6 && !fs.existsSync(coverOut)) {
                 try {
                   const pBuf = Buffer.alloc(Math.min(blockLength, 12 * 1024 * 1024));
-                  await readAt(pBuf, pBuf.length, pos);
+                  fs.readSync(fd, pBuf, 0, pBuf.length, pos);
                   let pPos = 4;
                   const mimeLen = pBuf.readUInt32BE(pPos);
                   pPos += 4 + mimeLen;
@@ -890,8 +875,7 @@ function runGUI() {
                   const picLen = pBuf.readUInt32BE(pPos);
                   pPos += 4;
                   if (picLen > 0 && pPos + picLen <= pBuf.length) {
-                    await fs.promises.writeFile(coverOut, pBuf.subarray(pPos, pPos + picLen));
-                    hasCover = true;
+                    fs.writeFileSync(coverOut, pBuf.subarray(pPos, pPos + picLen));
                   }
                 } catch (e) {}
               }
@@ -901,7 +885,7 @@ function runGUI() {
         } catch (e) {
         } finally {
           if (fd !== null) {
-            try { await fd.close(); } catch (e) {}
+            try { fs.closeSync(fd); } catch (e) {}
           }
         }
 
@@ -1028,28 +1012,20 @@ function runGUI() {
         };
       }
 
-      // A few files at a time: ffprobe/ffmpeg fallbacks dominate, and running
-      // them in parallel keeps large folder imports from taking minutes.
-      async function extractLocalTracks(paths) {
-        const results = new Array(paths.length);
-        let next = 0;
-        const worker = async () => {
-          while (next < paths.length) {
-            const i = next++;
-            try { results[i] = await extractLocalTrackMetadata(paths[i]); } catch (e) {}
-          }
-        };
-        await Promise.all(Array.from({ length: Math.min(4, paths.length) }, worker));
-        return results.filter(Boolean);
-      }
-
       ipcMain.handle('pick-local-files', async () => {
         const r = await dialog.showOpenDialog(mainWindow, {
           properties: ['openFile', 'multiSelections'],
           filters: [{ name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'opus', 'wma'] }]
         });
         if (r.canceled || !r.filePaths) return [];
-        return extractLocalTracks(r.filePaths);
+        const tracks = [];
+        for (const fp of r.filePaths) {
+          try {
+            const meta = await extractLocalTrackMetadata(fp);
+            if (meta) tracks.push(meta);
+          } catch (e) {}
+        }
+        return tracks;
       });
 
       ipcMain.handle('pick-local-folder', async () => {
@@ -1060,29 +1036,50 @@ function runGUI() {
         const AUDIO_EXT = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wma']);
         const sources = [];
 
-        async function scanDir(dir) {
-          let entries;
-          try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
-          for (const entry of entries) {
-            const fullPath = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-              await scanDir(fullPath);
-            } else if (entry.isFile() && AUDIO_EXT.has(path.extname(entry.name).toLowerCase())) {
-              sources.push(fullPath);
+        function scanDir(dir) {
+          try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                scanDir(fullPath);
+              } else if (entry.isFile()) {
+                const ext = path.extname(entry.name).toLowerCase();
+                if (AUDIO_EXT.has(ext)) {
+                  sources.push(fullPath);
+                }
+              }
             }
-          }
+          } catch (e) {}
         }
 
         for (const dir of r.filePaths) {
-          await scanDir(dir);
+          scanDir(dir);
         }
 
-        return extractLocalTracks(sources);
+        const tracks = [];
+        for (const fp of sources) {
+          try {
+            const meta = await extractLocalTrackMetadata(fp);
+            if (meta) tracks.push(meta);
+          } catch (e) {}
+        }
+        return tracks;
       });
 
       ipcMain.handle('rescan-local-metadata', async (event, paths) => {
         if (!Array.isArray(paths)) return [];
-        return extractLocalTracks(paths.filter(fp => fp && typeof fp === 'string' && fs.existsSync(fp)));
+        const tracks = [];
+        for (const fp of paths) {
+          if (!fp || typeof fp !== 'string') continue;
+          try {
+            if (fs.existsSync(fp)) {
+              const meta = await extractLocalTrackMetadata(fp);
+              if (meta) tracks.push(meta);
+            }
+          } catch (e) {}
+        }
+        return tracks;
       });
 
       ipcMain.handle('get-data-dir', () => {
@@ -1470,62 +1467,115 @@ function runGUI() {
         return { success: true, loggedIn: true };
       }
 
+      const CLEAN_LOGIN_UA = process.platform === 'darwin'
+        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        : process.platform === 'win32'
+        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+      async function openYoutubeSignInWindow() {
+        if (!fs.existsSync(YT_LOGOUT_FLAG)) {
+          const imported = await exportYoutubeCookiesToDisk().catch(() => false);
+          if (imported && hasValidYtCookiesFile()) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('youtube-playback-auth', { success: true, loggedIn: true });
+            }
+            return { success: true, loggedIn: true };
+          }
+        }
+
+        if (youtubePlaybackWindow && !youtubePlaybackWindow.isDestroyed()) {
+          youtubePlaybackWindow.show();
+          youtubePlaybackWindow.focus();
+          return new Promise((resolve) => {
+            youtubePlaybackWindow.once('closed', () => {
+              resolve({ success: hasValidYtCookiesFile(), loggedIn: hasValidYtCookiesFile() });
+            });
+          });
+        }
+
+        const googleSession = session.fromPartition('persist:riff-google');
+        googleSession.setUserAgent(CLEAN_LOGIN_UA);
+
+        return new Promise((resolve) => {
+          const loginWindow = new BrowserWindow({
+            width: 960,
+            height: 720,
+            title: 'Sign in to YouTube Music',
+            autoHideMenuBar: true,
+            parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+            webPreferences: {
+              session: googleSession,
+              nodeIntegration: false,
+              contextIsolation: true,
+              sandbox: true
+            }
+          });
+          youtubePlaybackWindow = loginWindow;
+          loginWindow.webContents.setUserAgent(CLEAN_LOGIN_UA);
+
+          let pollTimer = null;
+          let settled = false;
+          const finishAuth = async () => {
+            if (settled) return;
+            settled = true;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            const result = await saveYoutubePlaybackCookies().catch(error => ({
+              success: false,
+              loggedIn: false,
+              error: error && error.message ? error.message : 'Could not save the YouTube session.'
+            }));
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('youtube-playback-auth', result);
+            }
+            resolve(result);
+          };
+
+          pollTimer = setInterval(async () => {
+            if (!loginWindow || loginWindow.isDestroyed()) {
+              clearInterval(pollTimer);
+              return;
+            }
+            try {
+              const cookies = await googleSession.cookies.get({});
+              const hasAuth = cookies.some(c =>
+                ['SAPISID', '__Secure-3PAPISID', '__Secure-1PAPISID', 'LOGIN_INFO'].includes(c.name) &&
+                String(c.domain || '').includes('youtube.com')
+              );
+              if (hasAuth) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                await finishAuth();
+                if (!loginWindow.isDestroyed()) loginWindow.close();
+              }
+            } catch (_) {}
+          }, 1200);
+
+          loginWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+            if (isYoutubeAuthUrl(targetUrl)) return { action: 'allow' };
+            shell.openExternal(targetUrl);
+            return { action: 'deny' };
+          });
+
+          loginWindow.once('closed', async () => {
+            if (youtubePlaybackWindow === loginWindow) youtubePlaybackWindow = null;
+            await finishAuth();
+          });
+
+          loginWindow.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F').then(() => {
+            if (!loginWindow.isDestroyed()) loginWindow.show();
+          }).catch(() => {
+            if (!loginWindow.isDestroyed()) loginWindow.loadURL('https://music.youtube.com/').catch(() => {});
+          });
+        });
+      }
+
       ipcMain.handle('youtube-playback-status', () => ({
         loggedIn: hasValidYtCookiesFile()
       }));
 
       ipcMain.handle('youtube-playback-login', async () => {
-        if (youtubePlaybackWindow && !youtubePlaybackWindow.isDestroyed()) {
-          youtubePlaybackWindow.show();
-          youtubePlaybackWindow.focus();
-          return { success: true };
-        }
-
-        const googleSession = session.fromPartition('persist:riff-google');
-        const loginWindow = new BrowserWindow({
-          width: 1000,
-          height: 760,
-          title: 'Sign in to YouTube',
-          autoHideMenuBar: true,
-          parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
-          webPreferences: {
-            session: googleSession,
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: true
-          }
-        });
-        youtubePlaybackWindow = loginWindow;
-        loginWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-          if (isYoutubeAuthUrl(targetUrl)) return { action: 'allow' };
-          shell.openExternal(targetUrl);
-          return { action: 'deny' };
-        });
-        loginWindow.webContents.on('will-navigate', (event, targetUrl) => {
-          if (!isYoutubeAuthUrl(targetUrl)) {
-            event.preventDefault();
-            shell.openExternal(targetUrl);
-          }
-        });
-        loginWindow.once('closed', async () => {
-          if (youtubePlaybackWindow === loginWindow) youtubePlaybackWindow = null;
-          const result = await saveYoutubePlaybackCookies().catch(error => ({
-            success: false,
-            error: error && error.message ? error.message : 'Could not save the YouTube session.'
-          }));
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('youtube-playback-auth', result);
-          }
-        });
-
-        try {
-          await loginWindow.loadURL('https://music.youtube.com/');
-          loginWindow.show();
-          return { success: true };
-        } catch (error) {
-          if (!loginWindow.isDestroyed()) loginWindow.destroy();
-          return { success: false, error: error && error.message ? error.message : 'Could not open YouTube sign-in.' };
-        }
+        return await openYoutubeSignInWindow();
       });
 
       ipcMain.handle('youtube-playback-logout', async () => {
@@ -1565,8 +1615,6 @@ function runGUI() {
           } catch (_) {}
         };
         if (process.platform === 'linux') {
-          // Try Brave first: it is a common logged-in YouTube browser and the
-          // export stops at the first browser that actually has a login.
           addIfDir(path.join(home, '.config', 'BraveSoftware', 'Brave-Browser'), 'brave');
           addIfDir(path.join(home, '.mozilla', 'firefox'), 'firefox');
           addIfDir(path.join(home, '.config', 'google-chrome'), 'chrome');
@@ -1625,8 +1673,6 @@ function runGUI() {
           const ytdlpBin = resolveBinary('yt-dlp');
           if (!ytdlpBin) return false;
 
-          // Export each browser into a scratch jar first: a browser without a
-          // YouTube login must not overwrite cookies from one that has it.
           const specs = getCandidateBrowserSpecs();
           for (const spec of specs) {
             const tmpJar = path.join(DATA_DIR, `.yt-cookies-${process.pid}.tmp`);
@@ -1796,12 +1842,12 @@ function runGUI() {
       }
 
       ipcMain.handle('google-auth-status', async () => {
-        try {
-          const auth = readGoogleOAuthData();
-          return { loggedIn: !!(auth && auth.refreshToken) };
-        } catch (e) {
-          return { loggedIn: false, error: e && e.message ? e.message : 'Google sign-in status unavailable' };
+        const hasCookies = hasValidYtCookiesFile();
+        if (hasCookies) {
+          await importYoutubeCookiesToSession().catch(() => {});
+          return { loggedIn: true };
         }
+        return { loggedIn: false };
       });
 
       ipcMain.handle('google-logout', async () => {
@@ -1840,12 +1886,7 @@ function runGUI() {
       });
 
       ipcMain.handle('google-login', async () => {
-        try {
-          await startGoogleOAuthLogin();
-          return { success: true, loggedIn: true };
-        } catch (e) {
-          return { success: false, loggedIn: false, error: e && e.message ? e.message : 'Google sign-in failed' };
-        }
+        return await openYoutubeSignInWindow();
       });
 
       ipcMain.handle('google-import-library', async (event, opts) => {
@@ -1853,23 +1894,19 @@ function runGUI() {
         const doLikes = !opts || opts.doLikes !== false;
         const doPlaylists = !opts || opts.doPlaylists !== false;
 
-        if (platform === 'youtube') {
-          try {
-            const accessToken = await getGoogleAccessToken();
-            return {
-              success: true,
-              ...await fetchYouTubeLibrary(accessToken, { platform, doLikes, doPlaylists })
-            };
-          } catch (e) {
-            return { success: false, error: e && e.message ? e.message : 'Failed to fetch YouTube library' };
-          }
+        if (hasValidYtCookiesFile()) {
+          await importYoutubeCookiesToSession().catch(() => {});
         }
 
         const s = session.fromPartition('persist:riff-google');
-        const cookies = await s.cookies.get({ name: 'SAPISID' });
-        const sapisidCookie = Array.isArray(cookies) ? cookies.find(c => c && c.value) : null;
+        const cookies = await s.cookies.get({});
+        const sapisidCookie = Array.isArray(cookies) ? (
+          cookies.find(c => c && c.name === 'SAPISID' && c.value) ||
+          cookies.find(c => c && c.name === '__Secure-3PAPISID' && c.value) ||
+          cookies.find(c => c && c.name === '__Secure-1PAPISID' && c.value)
+        ) : null;
         if (!sapisidCookie) {
-          return { success: false, error: 'YouTube Music import still requires an active YouTube Music browser session.' };
+          return { success: false, error: 'YouTube import requires an active YouTube browser session.' };
         }
         const sapisid = sapisidCookie.value;
 
@@ -2183,15 +2220,9 @@ function runGUI() {
 
       function setupTray() {
         try {
-          let trayIcon;
-          if (IS_MAC) {
-            // Menu bar icons must be monochrome template images (with an @2x
-            // variant) so macOS can tint them for light/dark menu bars.
-            trayIcon = nativeImage.createFromPath(path.join(__dirname, '../../assets', 'trayTemplate.png'));
-            trayIcon.setTemplateImage(true);
-          } else {
-            trayIcon = nativeImage.createFromPath(path.join(__dirname, '../../assets', 'icon.png')).resize({ width: 22, height: 22 });
-          }
+          const iconPath = path.join(__dirname, '../../assets', 'icon.png');
+          let trayIcon = nativeImage.createFromPath(iconPath);
+          trayIcon = trayIcon.resize({ width: 22, height: 22 });
           tray = new Tray(trayIcon);
           tray.setToolTip('Riff');
           const contextMenu = Menu.buildFromTemplate([
@@ -2239,8 +2270,7 @@ function runGUI() {
       app.whenReady().then(() => {
         if (!fs.existsSync(YT_LOGOUT_FLAG)) exportYoutubeCookiesToDisk().catch(() => {});
         global.riffSessionFetch = (urlStr, opts) => session.defaultSession.fetch(urlStr, opts);
-        // Packaged builds use the bundle icon; only replace Electron's default in dev.
-        if (IS_MAC && app.dock && !app.isPackaged) {
+        if (process.platform === 'darwin' && app.dock) {
           try {
             const dockIcon = nativeImage.createFromPath(path.join(__dirname, '../../assets', 'icon.png'));
             if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
@@ -2306,11 +2336,6 @@ function runGUI() {
           );
         } catch (_) {}
         createWindow();
-        // Media keys are handled by MediaSession (macOS Now Playing, MPRIS) or
-        // the opt-in Windows hook in registerMediaKeys(); registering them
-        // here as well stole them from the OS and ignored that setting.
-        // Cmd/Ctrl+Shift+Arrow is system-wide text selection, so the global
-        // transport shortcuts also need Alt to stay out of other apps' way.
         const GLOBAL_SHORTCUTS = {
           'CommandOrControl+Shift+Space': 'play-pause',
           'CommandOrControl+Alt+Shift+Right': 'next',
@@ -2327,8 +2352,6 @@ function runGUI() {
         }
         if (tutorialDone()) require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {
-          // Closing hides the window when tray-on-close is on, so a hidden
-          // window still exists and must be shown again from the Dock.
           if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.show();

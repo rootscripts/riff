@@ -15,8 +15,6 @@ const { DATA_DIR } = require('../shared/platform');
 const DEFAULT_PORT = 38472;
 const PORT_FILE = path.join(DATA_DIR, 'server-port');
 
-// The app writes its real port here; it differs from the default when
-// another process already holds 38472. Re-read on every reconnect.
 function streamUrl() {
   let port = DEFAULT_PORT;
   try { port = parseInt(fs.readFileSync(PORT_FILE, 'utf8'), 10) || DEFAULT_PORT; } catch (e) {}

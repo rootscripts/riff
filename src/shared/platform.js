@@ -4,9 +4,6 @@ const path = require('path');
 
 const IS_WIN = process.platform === 'win32';
 
-// Apps started from Finder/Dock inherit launchd's minimal PATH
-// (/usr/bin:/bin:/usr/sbin:/sbin), so yt-dlp could not find Homebrew's
-// ffmpeg or node. Add the usual install locations for child processes.
 if (process.platform === 'darwin') {
   const parts = (process.env.PATH || '').split(':').filter(Boolean);
   for (const dir of ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')]) {
@@ -150,10 +147,6 @@ async function removeDirContents(dir, skipNames = new Set(['config.json'])) {
   }
 }
 
-// Top-level entries Riff owns inside the data dir. Moving the data dir only
-// touches these: on macOS the default data dir is also Electron's userData
-// (Local Storage, cookies, storage.json...), and a custom data dir may hold
-// unrelated user files, so neither may be copied around or deleted wholesale.
 const RIFF_DATA_ENTRIES = [
   'tracks', 'custom-lyrics', 'lyrics', 'thumbnails', 'library', 'bin', 'plugins', 'themes', 'logs', 'i18n',
   'metadata.json', 'library.json', 'startup.json', 'yt-cookies.txt', 'google-oauth.enc', 'spotify-auth.enc',
@@ -206,9 +199,6 @@ const binaryCache = {};
 function resolveBinary(name) {
   if (name in binaryCache) {
     const cached = binaryCache[name];
-    // Re-validate cached paths: a managed binary can be removed or replaced
-    // (e.g. by a failed self-update), which would otherwise keep spawning a
-    // path that no longer exists until the app restarts.
     if (cached === null || isExecutableFile(cached)) return cached;
     delete binaryCache[name];
   }
@@ -235,14 +225,10 @@ function ytDlpCommand(args) {
     throw new Error('yt-dlp not found. Put yt-dlp and ffmpeg into the bin folder next to the app, or add them to PATH.');
   }
   const ffmpeg = resolveBinary('ffmpeg');
-  // Always point yt-dlp at the ffmpeg we resolved: findInPath also checks
-  // directories that are not necessarily on the child's PATH.
   const extra = ffmpeg && !args.includes('--ffmpeg-location') ? ['--ffmpeg-location', path.dirname(ffmpeg)] : [];
   return { bin, args: extra.concat(args) };
 }
 
-// yt-dlp needs a JS runtime for YouTube challenges. Fall back to Electron's
-// own binary (run as Node via ELECTRON_RUN_AS_NODE) when none is installed.
 function jsRuntime() {
   if (findInPath('node') || !process.versions.electron) return { spec: 'node', env: {} };
   return { spec: `node:${process.execPath}`, env: { ELECTRON_RUN_AS_NODE: '1' } };
@@ -252,10 +238,6 @@ function clearBinaryCache() {
   Object.keys(binaryCache).forEach((k) => delete binaryCache[k]);
 }
 
-// Returns true only for a real YouTube login inside a Netscape cookie jar.
-// Browser exports that merely contain Google analytics/consent cookies (e.g.
-// Vivaldi's __Secure-3PAPISID/__Secure-3PSID) must not count, otherwise
-// yt-dlp fails with "The page needs to be reloaded.".
 function cookieJarHasYtLogin(text) {
   try {
     let hasLoginInfo = false;
