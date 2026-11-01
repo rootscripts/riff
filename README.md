@@ -52,6 +52,7 @@
 > * **Bugs:** Please report them via the Issues tab using the provided bug report template.
 > * **Custom features & experiments:** You are welcome to **fork the repository** and maintain your own builds.
 > * Please do not open issues requesting to enable PRs.
+> * We do not accept any users to our core team.
 
 ## What is Riff?
 
