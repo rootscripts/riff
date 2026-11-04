@@ -145,6 +145,48 @@ function findFile(dir, fileName) {
   return null;
 }
 
+async function safeMoveBinary(tmp, target) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      try {
+        fs.renameSync(tmp, target);
+        return;
+      } catch (_) {
+        fs.copyFileSync(tmp, target);
+        try { fs.rmSync(tmp, { force: true }); } catch (_) {}
+        return;
+      }
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  }
+  throw lastErr || new Error(`Failed to move binary from ${tmp} to ${target}`);
+}
+
+async function tryWingetInstall(pkgId) {
+  if (!IS_WIN) return false;
+  const winget = resolveBinary('winget') || 'winget';
+  try {
+    await run(winget, [
+      'install',
+      '--id', pkgId,
+      '-e',
+      '--accept-source-agreements',
+      '--accept-package-agreements',
+      '--silent',
+      '--disable-interactivity'
+    ], 180000);
+    return true;
+  } catch (err) {
+    try { logger.error(`WinGet install failed for ${pkgId}`, err); } catch (_) {}
+    return false;
+  }
+}
+
 async function installYtDlp() {
   const asset = ytDlpAsset();
   const base = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
@@ -156,7 +198,7 @@ async function installYtDlp() {
   const got = await downloadFile(`${base}/${asset}`, tmp);
   if (got !== want) { fs.rmSync(tmp, { force: true }); throw new Error('yt-dlp checksum mismatch'); }
   if (!IS_WIN) fs.chmodSync(tmp, 0o755);
-  fs.renameSync(tmp, target);
+  await safeMoveBinary(tmp, target);
 }
 
 async function installFfmpeg() {
@@ -258,7 +300,22 @@ async function ensureTools() {
   state.status = 'downloading';
   state.error = '';
   try {
-    if (!resolveBinary('yt-dlp')) { state.tool = 'yt-dlp'; state.percent = 0; await installYtDlp(); clearBinaryCache(); }
+    if (!resolveBinary('yt-dlp')) {
+      state.tool = 'yt-dlp';
+      state.percent = 0;
+      try {
+        await installYtDlp();
+      } catch (err) {
+        if (IS_WIN) {
+          await tryWingetInstall('yt-dlp.yt-dlp');
+          clearBinaryCache();
+          if (!resolveBinary('yt-dlp')) throw err;
+        } else {
+          throw err;
+        }
+      }
+      clearBinaryCache();
+    }
     if (!resolveBinary('ffmpeg')) {
       state.tool = 'ffmpeg';
       state.percent = 0;
@@ -266,9 +323,20 @@ async function ensureTools() {
         await installFfmpeg();
         state.ffmpegError = '';
       } catch (err) {
-        if (process.platform !== 'darwin') throw err;
-        state.ffmpegError = err.message;
-        try { logger.error('ffmpeg install failed', err); } catch (_) {}
+        if (IS_WIN) {
+          await tryWingetInstall('Gyan.FFmpeg');
+          clearBinaryCache();
+          if (!resolveBinary('ffmpeg')) {
+            if (process.platform !== 'darwin') throw err;
+          } else {
+            state.ffmpegError = '';
+          }
+        } else if (process.platform !== 'darwin') {
+          throw err;
+        } else {
+          state.ffmpegError = err.message;
+          try { logger.error('ffmpeg install failed', err); } catch (_) {}
+        }
       }
       clearBinaryCache();
     }
@@ -305,4 +373,4 @@ async function updateYtDlpIfManaged() {
   }
 }
 
-module.exports = { ensureTools, toolsStatus, checkStatus, updateYtDlpIfManaged, expectedHash, ytDlpAsset, ffmpegAsset };
+module.exports = { ensureTools, toolsStatus, checkStatus, updateYtDlpIfManaged, expectedHash, ytDlpAsset, ffmpegAsset, tryWingetInstall, safeMoveBinary };

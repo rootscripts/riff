@@ -52,6 +52,7 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
   let suppressClick = false;
   let fromIdx = -1;
   let toIdx = -1;
+  let savedBaseTrackIdx = 0;
   let itemMetrics = [];
   let items = [];
   let draggedHeight = 0;
@@ -152,6 +153,7 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
     startScrollTop = scrollEl ? scrollEl.scrollTop : 0;
 
     container.dataset.isDraggingTrack = '1';
+    container._isDraggingReorder = true;
     container.style.userSelect = 'none';
     draggedItem.classList.add('is-dragging');
 
@@ -162,6 +164,8 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
     } catch (_) {}
 
     items = Array.from(container.querySelectorAll('.track-row'));
+    const baseTrackIdx = items.length > 0 ? (parseInt(items[0].dataset.trackIndex, 10) || 0) : 0;
+    savedBaseTrackIdx = baseTrackIdx;
     fromIdx = items.indexOf(draggedItem);
     toIdx = fromIdx;
     draggedHeight = draggedItem.offsetHeight;
@@ -273,6 +277,7 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
         container.style.userSelect = '';
         container.classList.add('no-enter-anim');
 
+        const baseTrackIdx = savedBaseTrackIdx;
         if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
           const currentChildren = Array.from(container.querySelectorAll('.track-row'));
           if (toIdx > fromIdx) {
@@ -287,20 +292,25 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
             }
           }
 
+          const realFromIdx = baseTrackIdx + fromIdx;
+          const realToIdx = baseTrackIdx + toIdx;
+
           container.querySelectorAll('.track-row').forEach((r, i) => {
-            r.dataset.trackIndex = String(i);
-            const num = r.querySelector('.track-row-index');
-            if (num) num.textContent = String(i + 1);
+            r.dataset.trackIndex = String(baseTrackIdx + i);
+            const num = r.querySelector('.track-num-text, .track-row-index');
+            if (num) num.textContent = String(baseTrackIdx + i + 1);
           });
 
           if (typeof onReorder === 'function') {
-            onReorder(fromIdx, toIdx);
+            onReorder(realFromIdx, realToIdx);
           }
         }
 
+        container._isDraggingReorder = false;
         setTimeout(() => { suppressClick = false; }, 80);
       }, isPerf ? 0 : 160);
     } else {
+      container._isDraggingReorder = false;
       suppressClick = false;
     }
   }

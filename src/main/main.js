@@ -1196,6 +1196,13 @@ function runGUI() {
       ipcMain.handle('get-multi-instance', () => !!readStartupConfig().multiInstance);
       ipcMain.on('set-multi-instance', (e, value) => { writeStartupConfig({ multiInstance: !!value }); });
 
+      ipcMain.handle('get-global-shortcuts', () => !!readStartupConfig().globalShortcuts);
+      ipcMain.on('set-global-shortcuts', (e, val) => {
+        globalShortcutsEnabled = !!val;
+        writeStartupConfig({ globalShortcuts: globalShortcutsEnabled });
+        syncGlobalShortcuts();
+      });
+
       const MEDIA_KEYS = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev', MediaStop: 'stop' };
       let mediaKeysWanted = true;
       let mediaKeysActive = false;
@@ -1242,6 +1249,34 @@ function runGUI() {
         windowButtonsWanted = !!visible;
         syncWindowButtons();
       });
+
+      const GLOBAL_SHORTCUTS = {
+        'CommandOrControl+Shift+Space': 'play-pause',
+        'CommandOrControl+Shift+Right': 'next',
+        'CommandOrControl+Shift+Left': 'prev',
+        'CommandOrControl+Shift+Up': 'seek-forward',
+        'CommandOrControl+Shift+Down': 'seek-back'
+      };
+      let globalShortcutsEnabled = !!readStartupConfig().globalShortcuts;
+      function syncGlobalShortcuts() {
+        const legacy = [
+          'CommandOrControl+Alt+Shift+Right',
+          'CommandOrControl+Alt+Shift+Left',
+          'CommandOrControl+Alt+Shift+Up',
+          'CommandOrControl+Alt+Shift+Down'
+        ];
+        for (const k of [...Object.keys(GLOBAL_SHORTCUTS), ...legacy]) {
+          try { globalShortcut.unregister(k); } catch (e) {}
+        }
+        if (!globalShortcutsEnabled) return;
+        for (const [accel, action] of Object.entries(GLOBAL_SHORTCUTS)) {
+          try {
+            globalShortcut.register(accel, () => {
+              if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('media-control', action);
+            });
+          } catch (e) {}
+        }
+      }
 
       let preMiniLyricsH = null;
       ipcMain.removeHandler('toggle-mini-window');
@@ -1346,13 +1381,47 @@ function runGUI() {
         }
       });
 
-      ipcMain.handle('show-playlist-context-menu', async (event) => {
+      ipcMain.handle('show-playlist-context-menu', async (event, playlistId, options = {}) => {
         const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+        const currentSort = (options && options.currentSort) || (typeof playlistId === 'object' && playlistId ? playlistId.currentSort : '') || 'manual';
         return new Promise((resolve) => {
           const menu = Menu.buildFromTemplate([
             {
+              label: 'Sort',
+              submenu: [
+                {
+                  label: 'Manual order',
+                  type: 'radio',
+                  checked: currentSort === 'manual',
+                  click: () => resolve('sort-manual')
+                },
+                {
+                  label: 'Date added (newest)',
+                  type: 'radio',
+                  checked: currentSort === 'added-desc',
+                  click: () => resolve('sort-added-desc')
+                },
+                {
+                  label: 'Date added (oldest)',
+                  type: 'radio',
+                  checked: currentSort === 'added-asc',
+                  click: () => resolve('sort-added-asc')
+                }
+              ]
+            },
+            { type: 'separator' },
+            {
+              label: 'Download all',
+              click: () => resolve('download')
+            },
+            {
               label: 'Export as JSON',
               click: () => resolve('export')
+            },
+            { type: 'separator' },
+            {
+              label: 'Delete playlist',
+              click: () => resolve('delete')
             }
           ]);
           menu.popup({
@@ -2336,20 +2405,7 @@ function runGUI() {
           );
         } catch (_) {}
         createWindow();
-        const GLOBAL_SHORTCUTS = {
-          'CommandOrControl+Shift+Space': 'play-pause',
-          'CommandOrControl+Alt+Shift+Right': 'next',
-          'CommandOrControl+Alt+Shift+Left': 'prev',
-          'CommandOrControl+Alt+Shift+Up': 'volume-up',
-          'CommandOrControl+Alt+Shift+Down': 'volume-down'
-        };
-        for (const [accel, action] of Object.entries(GLOBAL_SHORTCUTS)) {
-          try {
-            globalShortcut.register(accel, () => {
-              if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('media-control', action);
-            });
-          } catch (e) {}
-        }
+        syncGlobalShortcuts();
         if (tutorialDone()) require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {
           if (mainWindow && !mainWindow.isDestroyed()) {

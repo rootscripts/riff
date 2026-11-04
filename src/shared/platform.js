@@ -194,6 +194,37 @@ function findInPath(name, env = process.env, platform = process.platform) {
   return null;
 }
 
+function findBinaryInWinGetPackages(packagesDir, exe) {
+  try {
+    if (!fs.existsSync(packagesDir)) return null;
+    function search(dir, depth) {
+      if (depth > 3) return null;
+      let entries;
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch (_) {
+        return null;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (depth === 0 && !/yt-dlp|ffmpeg/i.test(entry.name)) {
+            continue;
+          }
+          const hit = search(full, depth + 1);
+          if (hit) return hit;
+        } else if (entry.isFile() && entry.name.toLowerCase() === exe.toLowerCase()) {
+          if (isExecutableFile(full)) return full;
+        }
+      }
+      return null;
+    }
+    return search(packagesDir, 0);
+  } catch (_) {
+    return null;
+  }
+}
+
 const binaryCache = {};
 
 function resolveBinary(name) {
@@ -210,6 +241,17 @@ function resolveBinary(name) {
     process.resourcesPath && path.join(process.resourcesPath, 'bin', exe),
     path.join(__dirname, '../../bin', exe)
   ].filter(Boolean);
+  if (IS_WIN) {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    candidates.push(
+      path.join(localAppData, 'Microsoft', 'WinGet', 'Links', exe),
+      path.join(os.homedir(), 'scoop', 'shims', exe),
+      path.join('C:\\ProgramData\\chocolatey\\bin', exe)
+    );
+    const packagesDir = path.join(localAppData, 'Microsoft', 'WinGet', 'Packages');
+    const pkgHit = findBinaryInWinGetPackages(packagesDir, exe);
+    if (pkgHit) candidates.push(pkgHit);
+  }
   let found = candidates.find(isExecutableFile) || findInPath(name);
   if (!found && !IS_WIN) {
     const local = path.join(os.homedir(), '.local', 'bin', exe);

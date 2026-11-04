@@ -1,6 +1,8 @@
 const { app, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { spawn } = require('child_process');
 
 const CHECK_DELAY_MS = 1500;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -16,6 +18,7 @@ function writeIgnored(file, version) {
 function isNewer(latest, current) {
   const p1 = String(latest || '').split('.').map(n => parseInt(n, 10) || 0);
   const p2 = String(current || '').split('.').map(n => parseInt(n, 10) || 0);
+  if (p2[0] >= 40 && p1[0] < 40) return true;
   for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
     const a = p1[i] || 0;
     const b = p2[i] || 0;
@@ -48,6 +51,122 @@ function initUpdater(getWindow) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
 
+  let isDownloadingAsset = false;
+  async function downloadAndInstallAsset(assetUrl, assetName, sendProgress) {
+    if (isDownloadingAsset) return;
+    isDownloadingAsset = true;
+
+    const mirrors = [assetUrl, `https://ghfast.top/${assetUrl}`, `https://ghp.ci/${assetUrl}`];
+    const tmpFile = path.join(os.tmpdir(), assetName);
+    let downloaded = false;
+
+    for (const url of mirrors) {
+      let timer = null;
+      let fileStream = null;
+      const controller = new AbortController();
+      const resetTimer = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          controller.abort(new Error('Download timeout/stall'));
+        }, 10000);
+      };
+
+      try {
+        resetTimer();
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Riff-Player' }
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const total = parseInt(res.headers.get('content-length') || '0', 10);
+        let done = 0;
+        fileStream = fs.createWriteStream(tmpFile);
+
+        for await (const chunk of res.body) {
+          resetTimer();
+          fileStream.write(chunk);
+          done += chunk.length;
+          if (total > 0 && typeof sendProgress === 'function') {
+            sendProgress('update-progress', { percent: Math.round((done / total) * 100) });
+          }
+        }
+
+        await new Promise((resolve, reject) => {
+          fileStream.on('error', reject);
+          fileStream.end(resolve);
+        });
+        if (timer) clearTimeout(timer);
+
+        if (total > 0 && done < total) {
+          throw new Error('Download incomplete');
+        }
+
+        downloaded = true;
+        if (typeof sendProgress === 'function') {
+          sendProgress('update-progress', { percent: 100 });
+        }
+        break;
+      } catch (err) {
+        if (timer) clearTimeout(timer);
+        if (fileStream) {
+          try { fileStream.destroy(); } catch (_) {}
+        }
+        try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (_) {}
+      }
+    }
+
+    if (!downloaded) {
+      isDownloadingAsset = false;
+      if (typeof sendProgress === 'function') {
+        sendProgress('update-error', { message: 'Download failed from all mirrors' });
+      }
+      return;
+    }
+
+    if (process.platform === 'linux' && process.env.APPIMAGE) {
+      try {
+        fs.chmodSync(tmpFile, 0o755);
+        fs.copyFileSync(tmpFile, process.env.APPIMAGE);
+        app.relaunch();
+        app.exit(0);
+      } catch (e) {
+        if (typeof sendProgress === 'function') sendProgress('update-error', { message: e.message });
+        isDownloadingAsset = false;
+      }
+      return;
+    }
+
+    if (process.platform === 'win32') {
+      try {
+        if (process.env.PORTABLE_EXECUTABLE_FILE) {
+          const batFile = path.join(os.tmpdir(), `riff-update-${Date.now()}.bat`);
+          const targetExe = process.env.PORTABLE_EXECUTABLE_FILE;
+          const batContent = `@echo off\r\ntimeout /t 2 /nobreak >nul\r\ncopy /y "${tmpFile}" "${targetExe}"\r\nstart "" "${targetExe}"\r\ndel "%~f0"\r\n`;
+          fs.writeFileSync(batFile, batContent);
+          const child = spawn('cmd.exe', ['/c', batFile], {
+            detached: true,
+            stdio: 'ignore'
+          });
+          child.unref();
+          app.exit(0);
+        } else {
+          const child = spawn(tmpFile, ['/S', '--force-run'], {
+            detached: true,
+            stdio: 'ignore'
+          });
+          child.unref();
+          app.exit(0);
+        }
+      } catch (e) {
+        if (typeof sendProgress === 'function') sendProgress('update-error', { message: e.message });
+        isDownloadingAsset = false;
+      }
+      return;
+    }
+  }
+
   const checkViaGithubApi = async () => {
     try {
       const res = await fetch('https://api.github.com/repos/rootscripts/riff/releases/latest', {
@@ -58,7 +177,31 @@ function initUpdater(getWindow) {
       const latestVer = (json.tag_name || '').replace(/^v/i, '');
       const currentVersion = pkg.version || app.getVersion();
       if (isNewer(latestVer, currentVersion)) {
-        current = { version: latestVer, releaseNotes: json.body || '', publishedAt: json.published_at || '', htmlUrl: json.html_url || '' };
+        const assets = Array.isArray(json.assets) ? json.assets : [];
+        let matchedAsset = null;
+        if (process.platform === 'win32') {
+          const isPortable = !!process.env.PORTABLE_EXECUTABLE_FILE;
+          if (isPortable) {
+            matchedAsset = assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && /portable/i.test(a.name));
+          }
+          if (!matchedAsset) {
+            matchedAsset = assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && !/blockmap/i.test(a.name) && (isPortable ? true : !/portable/i.test(a.name)))
+              || assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && !/blockmap/i.test(a.name));
+          }
+        } else if (process.platform === 'linux' && process.env.APPIMAGE) {
+          matchedAsset = assets.find(a => a.name && a.name.endsWith('.AppImage'));
+        }
+
+        const canInstallFromAsset = (process.platform === 'win32' || (process.platform === 'linux' && !!process.env.APPIMAGE)) && !!matchedAsset;
+
+        current = {
+          version: latestVer,
+          releaseNotes: json.body || '',
+          publishedAt: json.published_at || '',
+          htmlUrl: json.html_url || '',
+          assetUrl: matchedAsset ? matchedAsset.browser_download_url : null,
+          assetName: matchedAsset ? matchedAsset.name : null
+        };
         const ignored = readIgnored(ignoreFile) === latestVer;
         if (ignored && !manualCheck) return;
         manualCheck = false;
@@ -67,7 +210,7 @@ function initUpdater(getWindow) {
           releaseNotes: json.body || '',
           publishedAt: json.published_at || '',
           htmlUrl: json.html_url || '',
-          canInstall: false,
+          canInstall: canInstallFromAsset,
           url: json.html_url || `${releasesUrl}/tag/v${latestVer}`
         });
       } else {
@@ -91,6 +234,7 @@ function initUpdater(getWindow) {
     try {
       const eu = require('electron-updater');
       autoUpdater = eu.autoUpdater;
+      autoUpdater.allowDowngrade = true;
       if (isDev) autoUpdater.forceDevUpdateConfig = true;
       autoUpdater.autoDownload = false;
       autoUpdater.autoInstallOnAppQuit = false;
@@ -116,6 +260,25 @@ function initUpdater(getWindow) {
             if (json.body) releaseNotes = json.body;
             if (json.published_at) publishedAt = json.published_at;
             if (json.html_url) htmlUrl = json.html_url;
+
+            const assets = Array.isArray(json.assets) ? json.assets : [];
+            let matchedAsset = null;
+            if (process.platform === 'win32') {
+              const isPortable = !!process.env.PORTABLE_EXECUTABLE_FILE;
+              if (isPortable) {
+                matchedAsset = assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && /portable/i.test(a.name));
+              }
+              if (!matchedAsset) {
+                matchedAsset = assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && !/blockmap/i.test(a.name) && (isPortable ? true : !/portable/i.test(a.name)))
+                  || assets.find(a => a.name && a.name.toLowerCase().endsWith('.exe') && !/blockmap/i.test(a.name));
+              }
+            } else if (process.platform === 'linux' && process.env.APPIMAGE) {
+              matchedAsset = assets.find(a => a.name && a.name.endsWith('.AppImage'));
+            }
+            if (matchedAsset) {
+              current.assetUrl = matchedAsset.browser_download_url;
+              current.assetName = matchedAsset.name;
+            }
           }
         } catch (_) {}
 
@@ -184,13 +347,28 @@ function initUpdater(getWindow) {
 
   const doInstallNow = () => {
     installNow = true;
+    if (isDownloaded && autoUpdater && canInstall) {
+      try {
+        return autoUpdater.quitAndInstall();
+      } catch (_) {}
+    }
+    if (current && current.assetUrl) {
+      downloadAndInstallAsset(current.assetUrl, current.assetName, send);
+      return;
+    }
     if (autoUpdater && canInstall) {
       try {
         autoUpdater.quitAndInstall();
       } catch (_) {
         autoUpdater.downloadUpdate().then(() => {
           autoUpdater.quitAndInstall();
-        }).catch(() => {});
+        }).catch(() => {
+          if (current && current.assetUrl) {
+            downloadAndInstallAsset(current.assetUrl, current.assetName, send);
+          } else {
+            shell.openExternal((current && current.htmlUrl) || releasesUrl);
+          }
+        });
       }
     } else {
       shell.openExternal((current && current.htmlUrl) || releasesUrl);
@@ -206,13 +384,14 @@ function initUpdater(getWindow) {
       if (current) writeIgnored(ignoreFile, current.version);
       return;
     }
-    if (!canInstall || !autoUpdater) return;
     if (action === 'now') {
       doInstallNow();
     } else if (action === 'later') {
       installNow = false;
-      autoUpdater.autoInstallOnAppQuit = true;
-      autoUpdater.downloadUpdate().catch(() => {});
+      if (autoUpdater && canInstall) {
+        autoUpdater.autoInstallOnAppQuit = true;
+        autoUpdater.downloadUpdate().catch(() => {});
+      }
     }
   });
 
