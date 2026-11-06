@@ -12,7 +12,7 @@ body:
         > 2. **SEARCH EXISTING ISSUES FIRST!** Check both **open and closed** issues before posting duplicates.
         > 3. **CHANGE THE TITLE!** Do not leave just `[BUG]: `. Provide a clear, short summary.
         > 4. **ATTACH LOGS!** Reports without terminal/console logs will be rejected. If the issue doesn't contain logs or any errors in it, please do not provide them and replace with a placeholder 'no'
-
+        >5. **LATEST!** Check you're on latest version
   - type: checkboxes
     id: pre-check
     attributes:
@@ -26,6 +26,8 @@ body:
         - label: I replaced the issue title with a concise summary instead of leaving it blank or default.
           required: true
         - label: I have included relevant logs below (or terminal output).
+          required: true
+        - label: I checked i'm on latest version
           required: true
 
   - type: textarea
