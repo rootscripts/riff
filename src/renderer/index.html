@@ -316,7 +316,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 </head>
 <body class="no-nav-transition">
   <script>try { if (localStorage.getItem('riff_sidebar_width') !== '84') document.body.classList.add('sidebar-expanded'); const homeNextToSearch = localStorage.getItem('riff_home_next_to_search') !== '0'; document.body.classList.toggle('home-next-to-search', homeNextToSearch); } catch(_){}</script>
-  <div id="boot-skeleton"><div class="bs-top"><div class="bs-search-row"><div class="bs-home-circle"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div><div class="bs-search-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span>Search tracks, artists, or albums...</span></div></div></div><div class="bs-grid"><div class="bs-box"></div><div class="bs-box"></div><div class="bs-box"></div></div><div class="bs-bottom"></div><div class="bs-center-loader"><i></i><i></i><i></i></div></div>
+  <div id="boot-skeleton"><div class="bs-top"><div class="bs-search-row"><div class="bs-home-circle"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M4,19V10Q4,9.52 4.21,9.1Q4.43,8.67 4.8,8.4l6-4.5Q11.33,3.5 12,3.5t1.2,0.4l6,4.5q0.38,0.28 0.59,0.7Q20,9.52 20,10v9q0,0.82-0.59,1.41T18,21H15q-0.42,0-0.71-0.29Q14,20.43 14,20V15q0-0.43-0.29-0.71T13,14H11q-0.42,0-0.71,0.29T10,15v5q0,0.43-0.29,0.71T9,21H6q-0.82,0-1.41-0.59T4,19Z"/></svg></div><div class="bs-search-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span>Search tracks, artists, or albums...</span></div></div></div><div class="bs-grid"><div class="bs-box"></div><div class="bs-box"></div><div class="bs-box"></div></div><div class="bs-bottom"></div><div class="bs-center-loader"><i></i><i></i><i></i></div></div>
   <div id="fx-root"></div>
 
 
@@ -364,13 +364,26 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
   </header>
 
   <div class="top-nav">
+    <div class="top-nav-left" id="top-nav-left">
+      <button type="button" class="top-nav-menu-btn" id="btn-top-nav-menu" title="Menu" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+      <div class="top-nav-history-controls">
+        <button type="button" class="top-nav-arrow-btn" id="btn-nav-back" title="Go back" aria-label="Go back" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button type="button" class="top-nav-arrow-btn" id="btn-nav-forward" title="Go forward" aria-label="Go forward" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="offline-top-banner hidden" id="offline-top-banner">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
       <span data-i18n>Offline mode</span>
       <button type="button" class="offline-top-retry-btn" id="btn-offline-top-retry" data-i18n>Retry</button>
     </div>
     <div class="search-box-wrapper">
-      <button type="button" class="top-search-home-btn" id="btn-top-search-home" title="Home" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></button>
+      <button type="button" class="top-search-home-btn" id="btn-top-search-home" title="Home" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M4,19V10Q4,9.52 4.21,9.1Q4.43,8.67 4.8,8.4l6-4.5Q11.33,3.5 12,3.5t1.2,0.4l6,4.5q0.38,0.28 0.59,0.7Q20,9.52 20,10v9q0,0.82-0.59,1.41T18,21H15q-0.42,0-0.71-0.29Q14,20.43 14,20V15q0-0.43-0.29-0.71T13,14H11q-0.42,0-0.71,0.29T10,15v5q0,0.43-0.29,0.71T9,21H6q-0.82,0-1.41-0.59T4,19Z"/></svg></button>
       <div class="search-box">
         <button id="search-icon-btn" class="search-icon-btn" title="Search" type="button">
           <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -406,6 +419,14 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
           <span>SoundCloud</span>
         </button>
       </div>
+    </div>
+    <div class="top-nav-profile-actions" id="top-nav-profile-actions">
+      <button type="button" class="top-profile-avatar-btn" id="btn-top-profile-avatar" title="Account" aria-label="Account">
+        <img id="top-nav-avatar" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%232b2d31'/%3E%3Ccircle cx='32' cy='24' r='11' fill='%23949ba4'/%3E%3Cpath d='M12 56c0-11 9-18 20-18s20 7 20 18' fill='%23949ba4'/%3E%3C/svg%3E" alt="Profile" draggable="false" />
+      </button>
+      <button type="button" class="top-profile-menu-btn" id="btn-top-profile-menu" title="Menu" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
     </div>
   </div>
 
@@ -565,6 +586,17 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </button>
               <input type="text" id="sb-lib-search-input" placeholder="Search in Your Library" autocomplete="off">
             </div>
+            <div class="sb-lib-tabs-icons" id="sb-lib-tabs-icons">
+              <button type="button" class="sb-lib-icon-tab active" data-lib-filter="playlists" title="Playlists / Home" aria-label="Playlists">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M4,19V10Q4,9.52 4.21,9.1Q4.43,8.67 4.8,8.4l6-4.5Q11.33,3.5 12,3.5t1.2,0.4l6,4.5q0.38,0.28 0.59,0.7Q20,9.52 20,10v9q0,0.82-0.59,1.41T18,21H15q-0.42,0-0.71-0.29Q14,20.43 14,20V15q0-0.43-0.29-0.71T13,14H11q-0.42,0-0.71,0.29T10,15v5q0,0.43-0.29,0.71T9,21H6q-0.82,0-1.41-0.59T4,19Z"/></svg>
+              </button>
+              <button type="button" class="sb-lib-icon-tab" data-lib-filter="albums" title="Albums" aria-label="Albums">
+                <span class="material-symbols-rounded">library_music</span>
+              </button>
+              <button type="button" class="sb-lib-icon-tab" data-lib-filter="queue" title="Queue" aria-label="Queue">
+                <span class="material-symbols-rounded">queue_music</span>
+              </button>
+            </div>
             <button type="button" class="sb-lib-sort-btn" id="btn-sb-lib-sort">
               <span id="sb-lib-sort-label" data-i18n>Recents</span>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
@@ -612,6 +644,15 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
         <div class="rail-drawer-section" id="drawer-section-presets">
           <div class="presets-chips-container" id="presets-container"></div>
+          <div class="presets-bg-decor" aria-hidden="true">
+            <div class="presets-bg-stage">
+              <svg class="presets-bg-note n1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7.18,19.83Q6,18.65 6,17t1.18-2.83T10,13q0.58,0 1.06,0.14T12,13.55V4q0-0.43 0.29-0.71T13,3h4q0.43,0 0.71,0.29T18,4V6q0,0.43-0.29,0.71T17,7H14V17q0,1.65-1.17,2.82T10,21T7.18,19.83Z"/></svg>
+              <svg class="presets-bg-note n2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7.18,19.83Q6,18.65 6,17t1.18-2.83T10,13q0.58,0 1.06,0.14T12,13.55V4q0-0.43 0.29-0.71T13,3h4q0.43,0 0.71,0.29T18,4V6q0,0.43-0.29,0.71T17,7H14V17q0,1.65-1.17,2.82T10,21T7.18,19.83Z"/></svg>
+              <svg class="presets-bg-note n3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7.18,19.83Q6,18.65 6,17t1.18-2.83T10,13q0.58,0 1.06,0.14T12,13.55V4q0-0.43 0.29-0.71T13,3h4q0.43,0 0.71,0.29T18,4V6q0,0.43-0.29,0.71T17,7H14V17q0,1.65-1.17,2.82T10,21T7.18,19.83Z"/></svg>
+              <svg class="presets-bg-note n4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7.18,19.83Q6,18.65 6,17t1.18-2.83T10,13q0.58,0 1.06,0.14T12,13.55V4q0-0.43 0.29-0.71T13,3h4q0.43,0 0.71,0.29T18,4V6q0,0.43-0.29,0.71T17,7H14V17q0,1.65-1.17,2.82T10,21T7.18,19.83Z"/></svg>
+              <svg class="presets-bg-main-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M11.29,20.71Q11,20.43 11,20V16q0-0.43 0.29-0.71T12,15t0.71,0.29T13,16v1h7q0.43,0 0.71,0.29T21,18t-0.29,0.71T20,19H13v1q0,0.43-0.29,0.71T12,21t-0.71-0.29ZM4,19q-0.42,0-0.71-0.29Q3,18.43 3,18t0.29-0.71T4,17H8q0.43,0 0.71,0.29T9,18T8.71,18.71T8,19H4Zm3.29-4.29Q7,14.43 7,14V13H4q-0.42,0-0.71-0.29Q3,12.43 3,12t0.29-0.71T4,11H7V10Q7,9.57 7.29,9.29T8,9T8.71,9.29T9,10v4q0,0.42-0.29,0.71T8,15q-0.42,0-0.71-0.29ZM12,13q-0.42,0-0.71-0.29Q11,12.43 11,12t0.29-0.71T12,11h8q0.43,0 0.71,0.29T21,12t-0.29,0.71T20,13H12Zm3.29-4.29Q15,8.42 15,8V4q0-0.43 0.29-0.71T16,3q0.43,0 0.71,0.29T17,4V5h3q0.43,0 0.71,0.29T21,6T20.71,6.71T20,7H17V8q0,0.42-0.29,0.71T16,9T15.29,8.71ZM4,7Q3.58,7 3.29,6.71Q3,6.43 3,6T3.29,5.29T4,5h8q0.43,0 0.71,0.29T13,6T12.71,6.71T12,7H4Z"/></svg>
+            </div>
+          </div>
         </div>
 
         <div class="rail-drawer-section" id="drawer-section-playlists">
@@ -703,11 +744,11 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
   <button type="button" class="btn-icon-pill spotify-promo-close" id="btn-spotify-promo-close" aria-label="Dismiss">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
   </button>
-</div><section class="sp-section" id="sp-made-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4 10a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/></svg><span data-i18n>For you</span><button class="btn-icon-pill" id="btn-regen-mixes" aria-label="Regenerate mixes" title="Regenerate mixes" style="margin-left: auto; width: 32px; height: 32px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></h2><div class="sp-row" id="sp-made"></div></section><section class="sp-section" id="sp-quick-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span data-i18n>Home</span></h2><div class="sp-quick" id="sp-quick"></div></section><section class="sp-section" id="sp-trend-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg><span data-i18n>Trending now</span></h2><div class="sp-row" id="sp-trend"></div></section><section class="sp-section" id="sp-artists-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span data-i18n>Favorite artists</span></h2><div class="sp-row fav-artists-row" id="sp-artists"></div></section></div>
+</div><section class="sp-section" id="sp-made-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4 10a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/></svg><span data-i18n>For you</span><button class="btn-icon-pill" id="btn-regen-mixes" aria-label="Regenerate mixes" title="Regenerate mixes" style="margin-left: auto; width: 32px; height: 32px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></h2><div class="sp-row" id="sp-made"></div></section><section class="sp-section" id="sp-quick-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4,19V10Q4,9.52 4.21,9.1Q4.43,8.67 4.8,8.4l6-4.5Q11.33,3.5 12,3.5t1.2,0.4l6,4.5q0.38,0.28 0.59,0.7Q20,9.52 20,10v9q0,0.82-0.59,1.41T18,21H15q-0.42,0-0.71-0.29Q14,20.43 14,20V15q0-0.43-0.29-0.71T13,14H11q-0.42,0-0.71,0.29T10,15v5q0,0.43-0.29,0.71T9,21H6q-0.82,0-1.41-0.59T4,19Z"/></svg><span data-i18n>Home</span></h2><div class="sp-quick" id="sp-quick"></div></section><section class="sp-section" id="sp-trend-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg><span data-i18n>Trending now</span></h2><div class="sp-row" id="sp-trend"></div></section><section class="sp-section" id="sp-artists-sec"><h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span data-i18n>Favorite artists</span></h2><div class="sp-row fav-artists-row" id="sp-artists"></div></section></div>
           </div>
         </div>
 
-        <div class="search-results-container hidden" id="search-results-container">
+        <div class="search-results-container hidden view-hidden" id="search-results-container">
           <div class="search-filter-chips" id="search-filter-chips">
             <button type="button" class="search-chip active" data-filter="all">All</button>
             <button type="button" class="search-chip" data-filter="songs">Songs</button>
@@ -1063,7 +1104,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </button>
               <div style="flex: 1 1 auto; min-height: 12px;"></div>
               <button class="settings-nav-btn settings-account-nav-btn" data-cat="account" id="settings-nav-account" type="button">
-                <img id="settings-nav-avatar" class="settings-nav-avatar" src="../../assets/icon.png" alt="" draggable="false" />
+                <img id="settings-nav-avatar" class="settings-nav-avatar" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%232b2d31'/%3E%3Ccircle cx='32' cy='24' r='11' fill='%23949ba4'/%3E%3Cpath d='M12 56c0-11 9-18 20-18s20 7 20 18' fill='%23949ba4'/%3E%3C/svg%3E" alt="" draggable="false" />
                 <div class="settings-nav-account-meta">
                   <span class="settings-nav-account-name" id="settings-nav-account-name" data-i18n-fixed>User</span>
                   <span class="settings-nav-account-sub" data-i18n>Account</span>
@@ -1111,34 +1152,15 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </div>
             </div>
 
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">UI scale</span>
-                <span class="setting-value" id="settings-val-scale">105%</span>
-              </div>
-              <input type="range" class="pill-range" id="settings-slider-scale" min="80" max="130" step="5" value="105">
-              <div class="setting-hints"><span>Compact</span><span>Default</span><span>Large</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Font scale</span>
-                <span class="setting-value" id="val-font-scale">100%</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-font-scale" min="80" max="130" step="5" value="100">
-              <div class="setting-hints"><span>Small</span><span>Default</span><span>Large</span></div>
-            </div>
-
             <div class="setting-item" id="setting-interface-font">
               <div class="setting-item-top">
-                <span class="setting-name">Interface font</span>
+                <span class="setting-name" data-i18n>Interface font</span>
               </div>
               <div class="theme-mode-toggle" id="font-toggle">
                 <button type="button" class="theme-mode-btn active" id="font-opt-google" data-font="google">Google Sans</button>
                 <button type="button" class="theme-mode-btn" id="font-opt-sf" data-font="sf">SF Pro</button>
                 <button type="button" class="theme-mode-btn" id="font-opt-system" data-font="system">System</button>
               </div>
-              <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">SF Pro is loaded from fonts.cdnfonts.com when selected</div>
             </div>
 
             <div class="setting-item" id="setting-art-font-row">
@@ -1158,6 +1180,38 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               <div class="theme-mode-toggle" id="np-align-toggle">
                 <button type="button" class="theme-mode-btn active" id="np-align-left" data-align="left" data-i18n>Left</button>
                 <button type="button" class="theme-mode-btn" id="np-align-center" data-align="center" data-i18n>Center</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="setting-np-toolbar-pos-row">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name" data-i18n>Now Playing toolbar position</span>
+                <select id="np-toolbar-pos-select" style="display:none">
+                  <option value="top-center" selected>Top center</option>
+                  <option value="top-right">Top right</option>
+                  <option value="top-left">Top left</option>
+                  <option value="bottom-center">Bottom center</option>
+                  <option value="bottom-right">Bottom right</option>
+                  <option value="bottom-left">Bottom left</option>
+                  <option value="left-center">Left side</option>
+                  <option value="right-center">Right side</option>
+                </select>
+                <div class="m3-dropdown" id="np-toolbar-pos-dropdown" style="width: 190px; flex-shrink: 0;">
+                  <button class="m3-dropdown-trigger" id="np-toolbar-pos-trigger" type="button">
+                    <span class="m3-dropdown-label" id="np-toolbar-pos-label" data-i18n>Top center</span>
+                    <svg class="m3-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  <div class="m3-dropdown-menu" id="np-toolbar-pos-menu">
+                    <button class="m3-dropdown-option selected" data-value="top-center" type="button" data-i18n>Top center</button>
+                    <button class="m3-dropdown-option" data-value="top-right" type="button" data-i18n>Top right</button>
+                    <button class="m3-dropdown-option" data-value="top-left" type="button" data-i18n>Top left</button>
+                    <button class="m3-dropdown-option" data-value="bottom-center" type="button" data-i18n>Bottom center</button>
+                    <button class="m3-dropdown-option" data-value="bottom-right" type="button" data-i18n>Bottom right</button>
+                    <button class="m3-dropdown-option" data-value="bottom-left" type="button" data-i18n>Bottom left</button>
+                    <button class="m3-dropdown-option" data-value="left-center" type="button" data-i18n>Left side</button>
+                    <button class="m3-dropdown-option" data-value="right-center" type="button" data-i18n>Right side</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1246,6 +1300,35 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </div>
             </div>
 
+            <div class="setting-item" id="setting-riff-library">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span class="riff-lib-setting-icon" aria-hidden="true"></span>
+                  <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="setting-name" data-i18n>Riff Library</span>
+                      <span class="riff-beta-badge">EXPERIMENTAL</span>
+                    </div>
+                    <span class="setting-hint" data-i18n>Combines YouTube Music and SoundCloud into a single unified search source</span>
+                  </div>
+                </div>
+                <button class="effect-switch-btn active" id="btn-riff-library" type="button"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="setting-riff-library-streaming">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="setting-name" data-i18n>Riff Library hybrid streaming</span>
+                    <span class="riff-beta-badge">EXPERIMENTAL</span>
+                  </div>
+                  <span class="setting-hint" data-i18n>Cross-fallback and race YouTube Music and SoundCloud streams during playback</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-riff-library-streaming" type="button"><span class="thumb"></span></button>
+              </div>
+            </div>
+
             <div class="setting-item" id="setting-engine-api-row">
               <div class="setting-item-top">
                 <span class="setting-name">Search engine</span>
@@ -1299,42 +1382,6 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             </div>
 
             <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Corner radius</span>
-                <span class="setting-value" id="val-corner-radius">Default</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-corner-radius" min="0" max="32" step="4" value="16">
-              <div class="setting-hints"><span>Sharp</span><span>16px</span><span>Round</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Interface opacity</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-ui-alpha">100%</span>
-                  <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
-                </div>
-              </div>
-              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="100">
-              <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name" data-i18n>Floating panels blur</span>
-                  <span class="setting-hint" data-i18n>Background blur intensity for floating sheets, menus, and overlays</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-panel-blur">24px</span>
-                  <button class="btn-outline-pill" id="btn-reset-panel-blur" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));" data-i18n>Reset</button>
-                </div>
-              </div>
-              <input type="range" class="pill-range" id="slider-panel-blur" min="0" max="48" step="1" value="24">
-              <div class="setting-hints"><span>0px</span><span>Default (24px)</span><span>48px</span></div>
-            </div>
-
-            <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name" data-i18n>Play/Pause button background</span>
@@ -1371,18 +1418,83 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </div>
             </div>
 
+            <div class="setting-item" id="setting-np-viz">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Show visualizer in Now Playing panel</span>
+                  <span class="setting-hint" data-i18n>Render audio visualizer on the background behind cover and lyrics</span>
+                </div>
+                <button type="button" class="effect-switch-btn" id="btn-np-viz"><span class="thumb"></span></button>
+              </div>
+            </div>
+
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name" data-i18n>Playbar visualizer position</span>
                   <span class="setting-hint" data-i18n>Show visualizer as a small icon on the right or wide behind the playbar</span>
                 </div>
-                <div class="theme-mode-selector" id="bar-viz-pos-group">
+                <div class="theme-mode-toggle" id="bar-viz-pos-group">
                   <button type="button" class="theme-mode-btn" data-bar-viz-pos="mini" data-i18n>Compact</button>
                   <button type="button" class="theme-mode-btn active" data-bar-viz-pos="behind" data-i18n>Behind bar</button>
                 </div>
               </div>
             </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">UI scale</span>
+                <span class="setting-value" id="settings-val-scale">105%</span>
+              </div>
+              <input type="range" class="pill-range" id="settings-slider-scale" min="80" max="130" step="5" value="105">
+              <div class="setting-hints"><span>Compact</span><span>Default</span><span>Large</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Font scale</span>
+                <span class="setting-value" id="val-font-scale">100%</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-font-scale" min="80" max="130" step="5" value="100">
+              <div class="setting-hints"><span>Small</span><span>Default</span><span>Large</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Corner radius</span>
+                <span class="setting-value" id="val-corner-radius">Default</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-corner-radius" min="0" max="32" step="4" value="16">
+              <div class="setting-hints"><span>Sharp</span><span>16px</span><span>Round</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Interface opacity</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-ui-alpha">100%</span>
+                  <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="100">
+              <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Floating panels blur</span>
+                  <span class="setting-hint" data-i18n>Background blur intensity for floating sheets, menus, and overlays</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-panel-blur">24px</span>
+                  <button class="btn-outline-pill" id="btn-reset-panel-blur" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));" data-i18n>Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-panel-blur" min="0" max="48" step="1" value="24">
+              <div class="setting-hints"><span>0px</span><span>Default (24px)</span><span>48px</span></div>
+            </div>
+
             <div class="setting-item" id="setting-bar-viz-opacity">
               <div class="setting-item-top">
                 <span class="setting-name" data-i18n>Playbar visualizer opacity</span>
@@ -1411,11 +1523,22 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   <span class="setting-name" data-i18n>Visualizer style</span>
                   <span class="setting-hint" data-i18n>Choose between standard equalizer bars, connected liquid wave, or Swift</span>
                 </div>
-                <select class="pill-select" id="viz-style-dropdown">
+                <select class="pill-select" id="viz-style-dropdown" style="display:none">
                   <option value="bars">Bars (Default)</option>
                   <option value="wave">Wave</option>
                   <option value="swift">Swift</option>
                 </select>
+                <div class="m3-dropdown" id="viz-style-m3-dropdown" style="width: 190px; flex-shrink: 0;">
+                  <button class="m3-dropdown-trigger" id="viz-style-m3-trigger" type="button">
+                    <span class="m3-dropdown-label" id="viz-style-m3-label">Bars (Default)</span>
+                    <svg class="m3-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  <div class="m3-dropdown-menu" id="viz-style-m3-menu">
+                    <button class="m3-dropdown-option selected" data-value="bars" type="button">Bars (Default)</button>
+                    <button class="m3-dropdown-option" data-value="wave" type="button">Wave</button>
+                    <button class="m3-dropdown-option" data-value="swift" type="button">Swift</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1584,7 +1707,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   </div>
                   <div class="tg-account-center">
                     <div class="account-avatar-picker" id="btn-pick-account-avatar" title="Click to change avatar">
-                      <img id="account-profile-avatar" src="../../assets/icon.png" alt="" draggable="false" />
+                      <img id="account-profile-avatar" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%232b2d31'/%3E%3Ccircle cx='32' cy='24' r='11' fill='%23949ba4'/%3E%3Cpath d='M12 56c0-11 9-18 20-18s20 7 20 18' fill='%23949ba4'/%3E%3C/svg%3E" alt="" draggable="false" />
                       <div class="account-avatar-overlay">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                       </div>
@@ -1838,9 +1961,19 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               <div class="settings-section" data-cat="banners">
                 <div class="m3-group">
             <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Blurred cover background</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Uses a blurred version of the current track cover as the app background</span>
+                </div>
+                <button class="effect-switch-btn" data-adv="cover_bg"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Enable banners</span>
+                  <span class="setting-name" data-i18n>Playlist & Now Playing banners</span>
                   <span class="setting-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show artwork backdrop banners in Now playing and playlists</span>
                 </div>
                 <button class="effect-switch-btn active" data-adv="banners"><span class="thumb"></span></button>
@@ -1850,7 +1983,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Track banners</span>
+                  <span class="setting-name" data-i18n>Now Playing cover banner</span>
                   <span class="setting-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show artwork backdrop banner for currently playing track</span>
                 </div>
                 <button class="effect-switch-btn" data-adv="track_banners" id="btn-toggle-track-banners"><span class="thumb"></span></button>
@@ -1859,7 +1992,17 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Banner media</span>
+                <span class="setting-name">Custom app background</span>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-pill-primary" id="btn-choose-custom-bg">Choose file</button>
+                  <button class="btn-outline-pill" id="btn-remove-custom-bg">Remove</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Custom banner media</span>
                 <div style="display: flex; gap: 8px;">
                   <button class="btn-pill-primary" id="btn-choose-banner-media">Choose file</button>
                   <button class="btn-outline-pill" id="btn-reset-banner-media">Reset to track art</button>
@@ -1891,6 +2034,33 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
             <div class="setting-item">
               <div class="setting-item-top">
+                <span class="setting-name">Cover background brightness</span>
+                <span class="setting-value" id="val-cover-bg-brightness">45%</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-cover-bg-brightness" min="5" max="100" step="5" value="45">
+              <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Custom background blur</span>
+                <span class="setting-value" id="val-bg-blur">0px</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-bg-blur" min="0" max="40" step="1" value="0">
+              <div class="setting-hints"><span>0px</span><span>20px</span><span>40px</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Custom background opacity</span>
+                <span class="setting-value" id="val-bg-opacity">100%</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-bg-opacity" min="5" max="100" step="5" value="100">
+              <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top">
                 <span class="setting-name">Banner blur</span>
                 <span class="setting-value" id="val-banner-blur">3px</span>
               </div>
@@ -1914,53 +2084,6 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </div>
               <input type="range" class="pill-range" id="slider-banner-fade" min="20" max="100" step="2" value="100">
               <div class="setting-hints"><span>Top</span><span>Default</span><span>Deep</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Background media</span>
-                <div style="display: flex; gap: 8px;">
-                  <button class="btn-pill-primary" id="btn-choose-custom-bg">Choose file</button>
-                  <button class="btn-outline-pill" id="btn-remove-custom-bg">Remove</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Opacity</span>
-                <span class="setting-value" id="val-bg-opacity">100%</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-bg-opacity" min="5" max="100" step="5" value="100">
-              <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Blur</span>
-                <span class="setting-value" id="val-bg-blur">0px</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-bg-blur" min="0" max="40" step="1" value="0">
-              <div class="setting-hints"><span>0px</span><span>20px</span><span>40px</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Cover background</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Uses a blurred version of the current cover as the background</span>
-                </div>
-                <button class="effect-switch-btn" data-adv="cover_bg"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Cover background brightness</span>
-                <span class="setting-value" id="val-cover-bg-brightness">45%</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-cover-bg-brightness" min="5" max="100" step="5" value="45">
-              <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
             </div>
                 </div>
               </div>
@@ -2233,11 +2356,12 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </div>
               <div class="m3-dropdown" id="lyrics-source-dropdown">
                 <button class="m3-dropdown-trigger" id="lyrics-source-trigger" type="button">
-                  <span id="lyrics-source-label">LRCLIB</span>
+                  <span id="lyrics-source-label">Auto</span>
                   <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
                 <div class="m3-dropdown-menu" id="lyrics-source-menu">
-                  <button class="m3-dropdown-option selected" data-value="lrclib" type="button">LRCLIB</button>
+                  <button class="m3-dropdown-option selected" data-value="auto" type="button">Auto</button>
+                  <button class="m3-dropdown-option" data-value="lrclib" type="button">LRCLIB</button>
                   <button class="m3-dropdown-option" data-value="musixmatch" type="button">Musixmatch</button>
                   <button class="m3-dropdown-option" data-value="kugou" type="button">Kugou LRC</button>
                   <button class="m3-dropdown-option" data-value="netease" type="button">NetEase</button>
@@ -2888,7 +3012,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                       <span class="setting-name">Home layout</span>
                     </div>
                     <div class="theme-mode-toggle" id="home-layout-toggle">
-                      <button type="button" class="theme-mode-btn" id="home-layout-spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                      <button type="button" class="theme-mode-btn active" id="home-layout-spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
                         <span>Spotify</span>
                       </button>
@@ -2979,7 +3103,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.6.0</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.7.0</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -3016,7 +3140,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v0.6.0</span>
+            <span class="settings-version-tag">v0.7.0</span>
           </div>
             </div>
           </div>
@@ -3027,6 +3151,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
     <aside class="right-panel lyrics-empty" id="right-panel">
       <div class="panel-resize-edge" id="panel-resize-edge"></div>
       <div class="right-panel-banner" id="right-panel-banner"><div class="banner-image"></div></div>
+      <canvas id="np-visualizer-canvas" class="np-bg-visualizer"></canvas>
       <div class="right-panel-header">
         <div class="right-panel-header-actions">
           <button class="lyrics-action-btn" id="btn-add-custom-lyrics" title="Edit lyrics" aria-label="Edit lyrics">
@@ -3115,8 +3240,8 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
       <button class="btn-icon-pill" id="btn-edit-current-track" title="Edit track title and artist">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
-      <button class="btn-icon-pill" id="btn-playbar-more" title="Download track">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
+      <button class="btn-icon-pill" id="btn-playbar-more" title="More options" aria-label="More options">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle><circle cx="5" cy="12" r="2"></circle></svg>
       </button>
       <button class="btn-icon-pill riff-share-action-btn" id="btn-playbar-share" title="Copy share link" aria-label="Copy share link">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
@@ -3272,150 +3397,143 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
       <div class="audio-modal-layout">
         <nav class="audio-tabs" id="audio-tabs">
-          <button type="button" class="audio-tab" data-audio-tab="enhance">
+          <button type="button" class="audio-tab" data-audio-tab="enhance" title="Clear sound">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
             <span>Enhancer</span>
           </button>
-          <button type="button" class="audio-tab active" data-audio-tab="tempo">
+          <button type="button" class="audio-tab active" data-audio-tab="tempo" title="Speed & Pitch">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15h.01"/><path d="M20.2 16.8A10 10 0 1 0 3.8 16.8"/><path d="M12 15l3.5-3.5"/></svg>
             <span>Speed & Pitch</span>
           </button>
-          <button type="button" class="audio-tab" data-audio-tab="effects">
+          <button type="button" class="audio-tab" data-audio-tab="effects" title="Audio FX">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v4"/><path d="M6 7v10"/><path d="M10 4v16"/><path d="M14 7v10"/><path d="M18 9v6"/><path d="M22 11v2"/></svg>
             <span>Audio FX</span>
           </button>
-          <button type="button" class="audio-tab" data-audio-tab="eq">
+          <button type="button" class="audio-tab" data-audio-tab="eq" title="Equalizer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
             <span>Equalizer</span>
           </button>
-          <button type="button" class="audio-tab" data-audio-tab="sleep">
+          <button type="button" class="audio-tab" data-audio-tab="sleep" title="Sleep timer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             <span>Sleep</span>
+          </button>
+          <button type="button" class="audio-tab audio-reset-top-btn" id="btn-reset-audio" title="Reset audio settings" aria-label="Reset audio settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
           </button>
         </nav>
 
         <div class="settings-body audio-settings-body">
           <div class="audio-panel" data-audio-panel="sleep">
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Sleep timer</span>
-                <span class="setting-value" id="sleep-timer-status">Off</span>
+            <div class="setting-item sleep-timer-hero-card">
+              <div class="sleep-hero-top">
+                <div class="sleep-hero-time" id="sleep-timer-status">00:00</div>
+                <div class="sleep-hero-bar-wrap"><div class="sleep-hero-bar-fill" id="sleep-timer-progress"></div></div>
               </div>
               <div class="sleep-timer-options">
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="15">15 min</button>
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="30">30 min</button>
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="45">45 min</button>
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="60">60 min</button>
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="end">End of track</button>
-                <button class="btn-outline-pill" type="button" data-sleep-minutes="off">Turn off</button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="15"><span>15</span><small data-i18n>min</small></button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="30"><span>30</span><small data-i18n>min</small></button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="45"><span>45</span><small data-i18n>min</small></button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="60"><span>60</span><small data-i18n>min</small></button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="90"><span>90</span><small data-i18n>min</small></button>
+                <button class="sleep-min-pill" type="button" data-sleep-minutes="end" title="End of track">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                  <small data-i18n>Track end</small>
+                </button>
               </div>
-              <span class="sleep-timer-hint">Fades out and pauses when the timer runs out.</span>
+              <div class="sleep-timer-bottom-bar">
+                <button class="sleep-circle-btn sleep-stop-btn" type="button" data-sleep-minutes="off" id="btn-sleep-off" title="Turn off timer" aria-label="Turn off timer">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                </button>
+                <button class="sleep-circle-btn sleep-add-btn" type="button" id="btn-sleep-add-5" title="Add 5 minutes" aria-label="Add 5 minutes">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span>5m</span>
+                </button>
+              </div>
             </div>
           </div>
           <div class="audio-panel" data-audio-panel="enhance">
-          <div class="setting-item hq-enhancer-card">
-            <div class="setting-item-top">
-              <div class="effect-info">
-                <span class="setting-name">High Quality</span>
-                <span class="beta-badge">BETA</span>
+            <div class="setting-item hq-enhancer-card">
+              <div class="setting-item-top">
+                <span class="setting-name" data-i18n>Clear sound</span>
+                <button class="effect-switch-btn" id="toggle-hq-audio" type="button"><span class="thumb"></span></button>
               </div>
-              <button class="effect-switch-btn" id="toggle-hq-audio"><span class="thumb"></span></button>
-            </div>
-
-            <div class="hq-panel-wrapper" id="hq-panel-wrapper">
-              <div class="hq-panel-content">
-
-                <div class="hq-control-group">
-                  <span class="hq-label">Enhancement Engine</span>
-                  <select class="pill-select" id="hq-engine-select" style="display:none">
-                    <option value="hqmusic-3">hqmusic-3 (Harmonic Restorer)</option>
-                    <option value="glyphs-7B">glyphs-7B (High-End Upscaler)</option>
-                    <option value="fyro1.1">fyro1.1 (Dynamic Depth)</option>
-                  </select>
-                  <div class="m3-dropdown" id="hq-engine-dropdown">
-                    <button class="m3-dropdown-trigger" id="hq-engine-trigger" type="button">
-                      <span id="hq-engine-label">hqmusic-3 (Harmonic Restorer)</span>
-                      <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="m3-dropdown-menu" id="hq-engine-menu">
-                      <button class="m3-dropdown-option selected" data-value="hqmusic-3" type="button">hqmusic-3 (Harmonic Restorer)</button>
-                      <button class="m3-dropdown-option" data-value="glyphs-7B" type="button">glyphs-7B (High-End Upscaler)</button>
-                      <button class="m3-dropdown-option" data-value="fyro1.1" type="button">fyro1.1 (Dynamic Depth)</button>
+              <div class="hq-panel-wrapper" id="hq-panel-wrapper">
+                <div class="hq-panel-content">
+                  <div class="hq-control-group" style="display:none !important;">
+                    <select class="pill-select" id="hq-engine-select" style="display:none"><option value="hqmusic-3">hqmusic-3</option></select>
+                  </div>
+                  <div class="hq-slider-group ruler-slider-card">
+                    <div class="setting-item-top">
+                      <span class="setting-name" data-i18n>Vocals</span>
+                      <span class="setting-value" id="val-hq-vocal">0%</span>
                     </div>
+                    <input type="range" class="pill-range ruler-range" id="slider-hq-vocal" min="-50" max="50" step="1" value="0">
+                  </div>
+                  <div class="hq-slider-group ruler-slider-card">
+                    <div class="setting-item-top">
+                      <span class="setting-name" data-i18n>Treble</span>
+                      <span class="setting-value" id="val-hq-air">0%</span>
+                    </div>
+                    <input type="range" class="pill-range ruler-range" id="slider-hq-air" min="-50" max="50" step="1" value="0">
+                  </div>
+                  <div class="hq-slider-group ruler-slider-card">
+                    <div class="setting-item-top">
+                      <span class="setting-name" data-i18n>Bass</span>
+                      <span class="setting-value" id="val-hq-bass">0%</span>
+                    </div>
+                    <input type="range" class="pill-range ruler-range" id="slider-hq-bass" min="-50" max="50" step="1" value="0">
                   </div>
                 </div>
-
-
-                <div class="hq-slider-group">
-                  <div class="setting-item-top">
-                    <span class="setting-name">Vocal Clarity</span>
-                    <span class="setting-value" id="val-hq-vocal">0%</span>
-                  </div>
-                  <input type="range" class="pill-range" id="slider-hq-vocal" min="-50" max="50" step="1" value="0">
-                </div>
-
-                <div class="hq-slider-group">
-                  <div class="setting-item-top">
-                    <span class="setting-name">High-End Air</span>
-                    <span class="setting-value" id="val-hq-air">0%</span>
-                  </div>
-                  <input type="range" class="pill-range" id="slider-hq-air" min="-50" max="50" step="1" value="0">
-                </div>
-
-                <div class="hq-slider-group">
-                  <div class="setting-item-top">
-                    <span class="setting-name">Bass Depth</span>
-                    <span class="setting-value" id="val-hq-bass">0%</span>
-                  </div>
-                  <input type="range" class="pill-range" id="slider-hq-bass" min="-50" max="50" step="1" value="0">
-                </div>
-
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name" data-i18n>Normalize volume</span>
+                <button class="effect-switch-btn" id="toggle-normalize" type="button"><span class="thumb"></span></button>
               </div>
             </div>
           </div>
-
-          <div class="setting-item">
-            <div class="setting-item-top" style="align-items: center;">
-              <div style="display: flex; flex-direction: column; gap: 2px;">
-                <span class="setting-name">Normalize volume</span>
-                <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Keeps loudness similar between tracks (adjusts live, up to 9 dB)</span>
-              </div>
-              <button class="effect-switch-btn" id="toggle-normalize"><span class="thumb"></span></button>
-            </div>
-          </div>
-        </div>
 
         <div class="audio-panel active" data-audio-panel="tempo">
-          <div class="setting-item">
-            <div class="setting-item-top">
-              <span class="setting-name">Speed</span>
-              <span class="setting-value" id="val-speed">1.00x</span>
-            </div>
-            <input type="range" class="pill-range" id="slider-speed" min="0.5" max="2.0" step="0.05" value="1.0">
+          <input type="range" class="sl-done" id="slider-speed-pitch" min="0.5" max="2.0" step="0.01" value="1.0" style="display:none !important;"><span id="val-speed-pitch" style="display:none !important;">1.00x</span>
+          <div class="speed-preset-pills" id="speed-preset-pills">
+            <button type="button" class="speed-pill-btn" data-speed-val="0.8">x0.8</button>
+            <button type="button" class="speed-pill-btn" data-speed-val="0.9">x0.9</button>
+            <button type="button" class="speed-pill-btn active" data-speed-val="1.0">x1.0</button>
+            <button type="button" class="speed-pill-btn" data-speed-val="1.15">x1.15</button>
+            <button type="button" class="speed-pill-btn" data-speed-val="1.25">x1.25</button>
+            <button type="button" class="speed-pill-btn" data-speed-val="1.35">x1.35</button>
           </div>
-
-          <div class="setting-item">
-            <div class="setting-item-top">
-              <span class="setting-name">Speed (pitch)</span>
-              <span class="setting-value" id="val-speed-pitch">1.00x</span>
+          <div class="setting-item ruler-slider-card" id="speed-ruler-card">
+            <div class="setting-item-top"><span class="setting-name" data-i18n>Speed</span></div>
+            <input type="range" class="pill-range ruler-range" id="slider-speed" min="0.5" max="2.0" step="0.01" value="1.0">
+            <div class="sl-stepper-row">
+              <button type="button" class="sl-step-btn" id="btn-speed-dec" aria-label="Decrease speed">−</button>
+              <span class="sl-step-val" id="val-speed">x1.00</span>
+              <button type="button" class="sl-step-btn" id="btn-speed-inc" aria-label="Increase speed">+</button>
             </div>
-            <input type="range" class="pill-range" id="slider-speed-pitch" min="0.5" max="2.0" step="0.05" value="1.0">
           </div>
-
-          <div class="setting-item">
-            <div class="setting-item-top">
-              <span class="setting-name">Pitch</span>
-              <span class="setting-value" id="val-pitch">0 st</span>
+          <div class="setting-item ruler-slider-card" id="pitch-ruler-card">
+            <div class="setting-item-top"><span class="setting-name" data-i18n>Pitch</span></div>
+            <input type="range" class="pill-range ruler-range" id="slider-pitch" min="-12" max="12" step="0.1" value="0">
+            <div class="sl-stepper-row">
+              <button type="button" class="sl-step-btn" id="btn-pitch-dec" aria-label="Decrease pitch">−</button>
+              <span class="sl-step-val" id="val-pitch">0.0 st</span>
+              <button type="button" class="sl-step-btn" id="btn-pitch-inc" aria-label="Increase pitch">+</button>
             </div>
-            <input type="range" class="pill-range" id="slider-pitch" min="-12" max="12" step="1" value="0">
           </div>
-
-          <div class="setting-item">
+          <div class="setting-item" id="link-speed-pitch-card">
+            <div class="setting-item-top" style="align-items: center;">
+              <span class="setting-name" data-i18n>Link speed to pitch</span>
+              <button type="button" class="effect-switch-btn active" id="btn-link-speed-pitch"><span class="thumb"></span></button>
+            </div>
+          </div>
+          <div class="setting-item ruler-slider-card" id="gain-ruler-card">
             <div class="setting-item-top">
-              <span class="setting-name">Volume gain</span>
+              <span class="setting-name" data-i18n>Volume gain</span>
               <span class="setting-value" id="val-gain">100%</span>
             </div>
-            <input type="range" class="pill-range" id="slider-gain" min="0" max="200" step="1" value="100">
+            <input type="range" class="pill-range ruler-range" id="slider-gain" min="0" max="200" step="1" value="100">
           </div>
         </div>
 
@@ -3467,29 +3585,11 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               <span class="setting-name">10-band Equalizer</span>
               <button type="button" class="btn-outline-pill" id="btn-reset-eq-bands">Reset</button>
             </div>
-            <div class="eq-faders-container">
-              <div class="eq-scale">
-                <span>+12</span>
-                <span>0</span>
-                <span>-12</span>
-              </div>
-              <div class="eq-faders-area">
-                <div class="eq-grid-lines">
-                  <div class="eq-grid-line line-max"></div>
-                  <div class="eq-grid-line line-mid"></div>
-                  <div class="eq-grid-line line-min"></div>
-                </div>
-                <div class="eq-bands" id="eq-bands"></div>
-              </div>
-            </div>
+            <div class="eq-bands" id="eq-bands"></div>
           </div>
         </div>
       </div>
     </div>
-
-      <div class="settings-footer">
-        <button class="btn-outline-pill" id="btn-reset-audio">Reset audio settings</button>
-      </div>
     </div>
   </div>
 
@@ -3810,6 +3910,12 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             </div>
           </div>
         </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="chk-sp-sync-playlist" class="m3-checkbox" checked>
+            <span>Enable playlist synchronization</span>
+          </label>
+        </div>
       </div>
       <div class="sp-pane hidden" data-mode="file">
         <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">Spotify → Account → Privacy → Download your data. When the archive arrives, pick Playlist1.json and YourLibrary.json here. No login needed.</div>
@@ -3992,6 +4098,12 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               <button class="m3-dropdown-option selected" data-value="__new__" type="button" role="option" aria-selected="true">Create new playlist</button>
             </div>
           </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="chk-link-sync-playlist" class="m3-checkbox" checked>
+            <span>Enable playlist synchronization</span>
+          </label>
         </div>
       </div>
       <div class="link-pane sp-pane hidden" data-mode="login">
@@ -4191,9 +4303,12 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
   <div class="modal-backdrop hidden" id="download-modal">
     <div class="modal-card download-modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="download-modal-title">Download track</h3>
-        <button class="btn-icon-pill" id="btn-close-download-modal" title="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <h3 class="modal-title" id="download-modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="download-modal-title-text" data-i18n>Download track</span>
+        </h3>
+        <button class="btn-icon-pill" id="btn-close-download-modal" title="Close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -4206,58 +4321,65 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
         </div>
       </div>
 
-      <div class="dl-mode-tabs" id="dl-mode-tabs"><button type="button" class="dl-mode-tab active" data-dl-tab="download" data-i18n>Download file</button><button type="button" class="dl-mode-tab" data-dl-tab="trim"><span data-i18n>Trim best part</span><span class="riff-beta-badge" style="margin-left:6px;">NEW</span></button></div>
+      <div class="dl-mode-tabs" id="dl-mode-tabs">
+        <button type="button" class="dl-mode-tab active" data-dl-tab="download">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span data-i18n>Download file</span>
+        </button>
+        <button type="button" class="dl-mode-tab" data-dl-tab="trim">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          <span data-i18n>Trim best part</span>
+          <span class="riff-beta-badge">NEW</span>
+        </button>
+      </div>
 
       <div id="dl-pane-download">
         <div class="download-section">
-          <span class="download-section-label">Audio format</span>
+          <span class="download-section-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span data-i18n>Audio format</span>
+          </span>
           <div class="format-chips-grid" id="format-chips-grid">
             <button class="format-chip active" data-format="mp3">
               <span class="format-chip-name">MP3</span>
-              <span class="chip-tag">Universal</span>
             </button>
             <button class="format-chip" data-format="flac">
               <span class="format-chip-name">FLAC</span>
-              <span class="chip-tag">Lossless</span>
             </button>
             <button class="format-chip" data-format="m4a">
               <span class="format-chip-name">M4A</span>
-              <span class="chip-tag">AAC</span>
             </button>
             <button class="format-chip" data-format="opus">
               <span class="format-chip-name">Opus</span>
-              <span class="chip-tag">Modern</span>
             </button>
             <button class="format-chip" data-format="wav">
               <span class="format-chip-name">WAV</span>
-              <span class="chip-tag">PCM</span>
             </button>
           </div>
         </div>
 
         <div class="download-section">
-          <span class="download-section-label">Bitrate quality</span>
+          <span class="download-section-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+            <span data-i18n>Bitrate quality</span>
+          </span>
           <div class="quality-chips-grid" id="quality-chips-grid">
             <button class="quality-chip active" data-quality="0">
               <span class="quality-chip-name">320 kbps</span>
-              <span class="chip-tag">Studio</span>
             </button>
             <button class="quality-chip" data-quality="2">
               <span class="quality-chip-name">256 kbps</span>
-              <span class="chip-tag">High quality</span>
             </button>
             <button class="quality-chip" data-quality="4">
               <span class="quality-chip-name">192 kbps</span>
-              <span class="chip-tag">Standard</span>
             </button>
             <button class="quality-chip" data-quality="5">
               <span class="quality-chip-name">128 kbps</span>
-              <span class="chip-tag">Compact</span>
             </button>
           </div>
         </div>
 
-        <div class="download-section" id="download-trim-section">
+        <div class="download-section" id="download-trim-section" style="display:none;">
           <span class="download-section-label">Trim audio</span>
           <div class="trim-inputs">
             <input type="text" id="trim-start" class="pill-text-input" placeholder="0:00" value="0:00">
@@ -4268,22 +4390,39 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
         <div class="download-section download-effects-section" id="download-effects-section">
           <div class="effects-toggle-row">
-            <label class="effects-toggle-label" for="download-apply-effects">Apply current audio effects (Preset/High Quality)</label>
+            <label class="effects-toggle-label" for="download-apply-effects">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+              <span data-i18n>Apply current audio effects</span>
+            </label>
             <input type="checkbox" id="download-apply-effects" class="m3-switch-input">
           </div>
         </div>
 
         <div class="download-modal-actions">
-          <button class="btn-text-error hidden" id="btn-delete-offline-track">Delete offline file</button>
+          <button class="btn-text-error hidden" id="btn-delete-offline-track">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span data-i18n>Delete offline file</span>
+          </button>
           <div class="download-actions-right">
-            <button class="btn-outline-pill" id="btn-cancel-download">Cancel</button>
+            <button class="btn-outline-pill" id="btn-cancel-download">
+              <span data-i18n>Cancel</span>
+            </button>
             <div id="download-spinner"></div>
-            <button class="btn-pill-primary" id="btn-confirm-download">
-              <span id="download-btn-text">Download MP3</span>
+            <button class="btn-pill-primary" id="btn-confirm-download" title="Download" aria-label="Download">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span id="download-btn-text" style="display:none !important;"></span>
             </button>
           </div>
         </div>
-        <div class="download-caption-path">Saved to <span id="download-caption-path"></span></div>
+        <div class="download-caption-path">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span data-i18n>Saved to</span>
+          <span id="download-caption-path"></span>
+        </div>
       </div>
 
       <div id="dl-pane-trim" class="hidden">
@@ -4348,7 +4487,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
     <div class="ota-update-sheet" id="update-sheet-card">
       <div class="ota-update-time" id="update-release-time">Just now</div>
       <div class="ota-update-top-row">
-        <span class="ota-update-version" id="update-version-badge">v0.6.0</span>
+        <span class="ota-update-version" id="update-version-badge">v0.7.0</span>
         <div class="ota-update-actions">
           <button class="ota-btn-update" id="btn-update-now" type="button" data-i18n>Update</button>
           <button class="ota-btn-ignore" id="btn-update-later" type="button" data-i18n>Ignore</button>
@@ -4539,11 +4678,22 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
         </div>
         <div class="tvk-row">
           <span class="tvk-label" data-i18n>Visualizer style</span>
-          <select class="pill-select" id="tvk-viz-style-dropdown">
+          <select class="pill-select" id="tvk-viz-style-dropdown" style="display:none">
             <option value="bars">Bars (Default)</option>
             <option value="wave">Wave</option>
             <option value="swift">Swift</option>
           </select>
+          <div class="m3-dropdown" id="tvk-viz-style-m3-dropdown">
+            <button class="m3-dropdown-trigger" id="tvk-viz-style-m3-trigger" type="button">
+              <span class="m3-dropdown-label" id="tvk-viz-style-m3-label">Bars (Default)</span>
+              <svg class="m3-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="m3-dropdown-menu" id="tvk-viz-style-m3-menu">
+              <button class="m3-dropdown-option selected" data-value="bars" type="button">Bars (Default)</button>
+              <button class="m3-dropdown-option" data-value="wave" type="button">Wave</button>
+              <button class="m3-dropdown-option" data-value="swift" type="button">Swift</button>
+            </div>
+          </div>
         </div>
         <div class="tvk-row tvk-row-toggle">
           <span class="tvk-label">Visualizer with lyrics</span>
@@ -4673,6 +4823,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
   </div>
 
   <div class="toast-container" id="toast-container"></div>
+  <div class="lossless-warn-badge hidden" id="lossless-warn-badge"></div>
 
   <div id="css-editor" class="css-editor hidden">
     <div class="css-editor-bar">

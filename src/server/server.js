@@ -429,15 +429,18 @@ function findCachedFileByMeta(title, artist) {
   if (!title) return null;
   const targetTitle = title.toLowerCase().trim();
   const targetArtist = (artist || '').toLowerCase().trim();
+  const targetKey = getTrackNormalizedKey(artist, title);
   for (const [cid, meta] of Object.entries(trackMetadataIndex)) {
-    if (meta && meta.title && meta.title.toLowerCase().trim() === targetTitle) {
-      const metaArtist = (meta.artist || '').toLowerCase().trim();
-      if (!artist || !meta.artist || metaArtist === targetArtist || metaArtist.includes(targetArtist)) {
-        const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
-        for (const ext of extensions) {
-          const fp = path.join(CACHE_DIR, `${cid}${ext}`);
-          if (fs.existsSync(fp)) return fp;
-        }
+    if (!meta) continue;
+    const metaTitle = (meta.title || '').toLowerCase().trim();
+    const metaArtist = (meta.artist || '').toLowerCase().trim();
+    const directMatch = metaTitle === targetTitle && (!artist || !meta.artist || metaArtist === targetArtist || metaArtist.includes(targetArtist));
+    const keyMatch = Boolean(targetKey && getTrackNormalizedKey(meta.artist, meta.title) === targetKey);
+    if (directMatch || keyMatch) {
+      const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
+      for (const ext of extensions) {
+        const fp = path.join(CACHE_DIR, `${cid}${ext}`);
+        if (fs.existsSync(fp)) return fp;
       }
     }
   }
@@ -2263,14 +2266,39 @@ async function fetchTrackCredits(artist, title) {
   let producers = [];
   let performers = normArtist ? [normArtist] : [];
   let releaseDate = '';
+  let album = null;
+
+  const primArtist = normArtist.split(/[,;&\/]|feat\.?|ft\.?/i)[0].trim();
+  const normTargetTitle = cleanTitleForMatching(normTitle);
+
+  const matchArtist = (cand) => {
+    const na = normalizeArtistName(cand);
+    const target = normalizeArtistName(primArtist) || normalizeArtistName(normArtist);
+    if (!na || !target) return false;
+    return na === target || na.includes(target) || target.includes(na);
+  };
 
   const q = `${normArtist} ${normTitle}`.trim();
   if (q) {
+    let dzTrack = null;
+    let matchedItunes = null;
+
     try {
-      const dzSearch = await httpGetJson(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=3`, 6000);
-      const dzId = dzSearch?.data?.[0]?.id;
+      const itunesQuery = encodeURIComponent(`${primArtist || normArtist} ${normTitle}`.trim());
+      const dzPromise = httpGetJson(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=10`, 6000).catch(() => null);
+      const itunesPromise = httpGetJson(`https://itunes.apple.com/search?term=${itunesQuery}&entity=song&limit=10`, 6000).catch(() => null);
+
+      const [dzSearch, itunesData] = await Promise.all([dzPromise, itunesPromise]);
+
+      const dzItems = Array.isArray(dzSearch?.data) ? dzSearch.data : [];
+      const dzMatched = dzItems.find(item => {
+        const itemTitle = cleanTitleForMatching(item.title_short || item.title);
+        return Boolean(normTargetTitle && itemTitle === normTargetTitle && matchArtist(item.artist?.name));
+      });
+
+      const dzId = dzMatched?.id;
       if (dzId) {
-        const dzTrack = await httpGetJson(`https://api.deezer.com/track/${dzId}`, 6000);
+        dzTrack = await httpGetJson(`https://api.deezer.com/track/${dzId}`, 6000).catch(() => null);
         if (dzTrack) {
           if (dzTrack.release_date) releaseDate = dzTrack.release_date;
           if (Array.isArray(dzTrack.contributors)) {
@@ -2289,6 +2317,38 @@ async function fetchTrackCredits(artist, title) {
               }
             }
           }
+        }
+      }
+
+      const itunesItems = Array.isArray(itunesData?.results) ? itunesData.results : [];
+      const itunesMatches = itunesItems.filter(item => {
+        const itemTitle = cleanTitleForMatching(item.trackName);
+        return Boolean(normTargetTitle && itemTitle === normTargetTitle && matchArtist(item.artistName));
+      });
+
+      if (itunesMatches.length > 0) {
+        matchedItunes = itunesMatches.find(item => {
+          const collName = String(item.collectionName || '');
+          const notSingle = !/\s*-\s*Single$/i.test(collName);
+          const multiTrack = Number(item.trackCount) >= 2;
+          return notSingle || multiTrack;
+        }) || itunesMatches[0];
+      }
+
+      if (!releaseDate && matchedItunes?.releaseDate) {
+        releaseDate = matchedItunes.releaseDate;
+      }
+
+      if ((matchedItunes && (matchedItunes.collectionId || matchedItunes.collectionName)) || (dzTrack?.album && (dzTrack.album.id || dzTrack.album.title))) {
+        const albumTitle = String(matchedItunes?.collectionName || dzTrack?.album?.title || '').replace(/\s*-\s*Single$/i, '').trim();
+        if (albumTitle) {
+          album = {
+            id: String(matchedItunes?.collectionId || dzTrack?.album?.id || ''),
+            title: albumTitle,
+            artist: primArtist || normArtist,
+            cover: upgradeArtworkUrl(matchedItunes?.artworkUrl100 || dzTrack?.album?.cover_medium || ''),
+            year: (matchedItunes?.releaseDate || dzTrack?.release_date || '').slice(0, 4)
+          };
         }
       }
     } catch (_) {}
@@ -2322,7 +2382,8 @@ async function fetchTrackCredits(artist, title) {
     composers: [...new Set(composers)],
     producers: [...new Set(producers)],
     performers: performers.length ? [...new Set(performers)] : (normArtist ? [normArtist] : []),
-    releaseDate: releaseDate || ''
+    releaseDate: releaseDate || '',
+    album: album || null
   };
 
   if (creditsCache.size > 500) {
@@ -2409,8 +2470,9 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
   } catch (_) {
     try { if (fs.existsSync(tempPath)) await fs.promises.unlink(tempPath); } catch (_) {}
     downloadingSet.delete(mainId);
-    if (/^[a-zA-Z0-9_-]{11}$/.test(primaryCleanId || secondaryCleanId) || /^[a-zA-Z0-9_-]{11}$/.test(secondaryCleanId || primaryCleanId)) {
-      downloadTrackToDisk('https://www.youtube.com/watch?v=' + (secondaryCleanId || primaryCleanId), primaryCleanId || secondaryCleanId, platform, meta).catch(() => {});
+    const ytVid = [secondaryCleanId, primaryCleanId].find(x => /^[a-zA-Z0-9_-]{11}$/.test(String(x || '').trim()));
+    if (ytVid) {
+      downloadTrackToDisk('https://www.youtube.com/watch?v=' + ytVid, primaryCleanId || ytVid, platform, meta).catch(() => {});
     }
   } finally {
     downloadingSet.delete(mainId);
@@ -2943,6 +3005,38 @@ async function ytmusicSearch(query, options = {}) {
   return [];
 }
 
+async function fetchRiffLibraryPool(qStr) {
+  const [ytmTracks, scTracks] = await Promise.all([
+    (async () => {
+      let tracks = (await ytmusicSearch(qStr).catch(() => [])) || [];
+      if (!tracks || tracks.length === 0) {
+        tracks = (await directYoutubeSearch(qStr, false, 30).catch(() => [])) || [];
+      }
+      return tracks;
+    })(),
+    fetchSoundCloudSearch(qStr, 25).catch(() => []) || []
+  ]);
+
+  const ytmList = (Array.isArray(ytmTracks) ? ytmTracks : []).map(t => ({
+    ...t,
+    platform: t.platform === 'soundcloud' ? 'soundcloud' : 'ytmusic'
+  }));
+  const scList = (Array.isArray(scTracks) ? scTracks : []).map(t => ({
+    ...t,
+    platform: 'soundcloud'
+  }));
+
+  const combined = [];
+  let yi = 0, si = 0;
+  while (yi < ytmList.length || si < scList.length) {
+    if (yi < ytmList.length) combined.push(ytmList[yi++]);
+    if (yi < ytmList.length) combined.push(ytmList[yi++]);
+    if (si < scList.length) combined.push(scList[si++]);
+  }
+
+  return cleanSearchResults(combined, qStr);
+}
+
 async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, offset = 0) {
   limit = Math.max(1, parseInt(limit, 10) || 12);
   offset = Math.max(0, parseInt(offset, 10) || 0);
@@ -2956,6 +3050,28 @@ async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, o
   let pool = searchCache.get(poolCacheKey);
 
   if (offset === 0 && (!pool || !Array.isArray(pool))) {
+    if (platform === 'rifflibrary') {
+      pool = await fetchRiffLibraryPool(qStr);
+      const riffCacheKey = `pool:rifflibrary:${qStr.toLowerCase()}`;
+      searchCache.set(riffCacheKey, pool);
+      setTimeout(() => { searchCache.delete(riffCacheKey); }, 300000);
+      const sliced = pool.slice(0, limit);
+      await Promise.all(sliced.map(async t => {
+        if (t.isCached === undefined && t.id) {
+          t.isCached = !!(await findCachedFile(t.id));
+        }
+      }));
+      if (sliced[0] && sliced[0].url) {
+        prefetchTrack(sliced[0].url, sliced[0].id, sliced[0].platform || 'youtube').catch(() => {});
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: true,
+        tracks: sliced,
+        hasMore: limit < pool.length
+      }));
+    }
+
     if (platform === 'soundcloud') {
       pool = (await fetchSoundCloudSearch(qStr, 40).catch(() => [])) || [];
       pool = cleanSearchResults(pool, qStr);
@@ -3035,7 +3151,9 @@ async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, o
   }
 
   if (!pool || !Array.isArray(pool)) {
-    if (platform === 'soundcloud') {
+    if (platform === 'rifflibrary') {
+      pool = await fetchRiffLibraryPool(qStr);
+    } else if (platform === 'soundcloud') {
       pool = (await fetchSoundCloudSearch(qStr, 40).catch(() => [])) || [];
     } else if (platform === 'youtube') {
       pool = (await directYoutubeSearch(qStr, false, 40).catch(() => [])) || [];
@@ -3047,9 +3165,11 @@ async function handleSearch(req, res, query, platform = 'ytmusic', limit = 12, o
         pool = (await directYoutubeSearch(qStr, false, 40).catch(() => [])) || [];
       }
     }
-    pool = cleanSearchResults(pool, qStr);
-    if ((platform === 'ytmusic' || platform === 'youtube') && pool.length === 0) {
-      pool = await fetchMetadataSearchFallback(qStr, 30);
+    if (platform !== 'rifflibrary') {
+      pool = cleanSearchResults(pool, qStr);
+      if ((platform === 'ytmusic' || platform === 'youtube') && pool.length === 0) {
+        pool = await fetchMetadataSearchFallback(qStr, 30);
+      }
     }
     searchCache.set(poolCacheKey, pool);
     setTimeout(() => { searchCache.delete(poolCacheKey); }, 300000);
@@ -3527,6 +3647,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   const forceYtDlp = Boolean(parsedUrl.query && parsedUrl.query.forceYtDlp === '1');
   const quality = (parsedUrl.query && parsedUrl.query.quality) || 'medium';
   const queryQ = (parsedUrl.query && parsedUrl.query.q) ? String(parsedUrl.query.q).trim() : '';
+  const riffStream = parsedUrl.query && parsedUrl.query.riffStream === '1';
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
@@ -3779,6 +3900,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     if (platform === 'soundcloud' || isSc) {
       streamUrl = await resolveScCandidateStream(trackUrl, cleanId);
       if (streamUrl) return sendStreamResponse(streamUrl);
+      if (riffStream && searchQ) {
+        try {
+          const ytHits = await ytmusicSearch(searchQ, { limit: 1, timeoutMs: 3000 }).catch(() => []);
+          const hitId = ytHits && ytHits[0] && ytHits[0].id;
+          if (hitId) {
+            const fallbackStream = await fetchDirectYoutubeStreamServer(hitId, quality).catch(() => null);
+            if (fallbackStream) return sendStreamResponse(fallbackStream, hitId);
+          }
+        } catch (_) {}
+      }
     } else if (isRealYtId && cleanId) {
       streamUrl = await resolveYtCandidateStream(cleanId);
       if (streamUrl) return sendStreamResponse(streamUrl, cleanId);
@@ -3787,7 +3918,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     if (!streamUrl && searchQ) {
       const maxCand = needYtAuth ? 1 : 3;
-      const needScRace = failedYtIds.size > 0 || !cleanId || !isRealYtId;
+      const needScRace = riffStream ? true : (failedYtIds.size > 0 || !cleanId || !isRealYtId);
       const scFallback = needScRace
         ? fetchDirectSoundCloudStreamServer('', q || searchQ).then(u => u ? { url: u, id: null } : Promise.reject(new Error('no sc')))
         : null;
@@ -4004,14 +4135,16 @@ async function fetchGeniusArtistArt(artistName) {
     const sections = data?.response?.sections || [];
     let artistObj = null;
 
+    const nc = normalizeArtistName(clean);
     const artistSection = sections.find(s => s && s.type === 'artist');
     if (artistSection && Array.isArray(artistSection.hits) && artistSection.hits.length > 0) {
-      const cleanLower = clean.toLowerCase();
       const match = artistSection.hits.find(h => {
-        const name = (h.result?.name || '').toLowerCase();
-        return name === cleanLower || name.includes(cleanLower) || cleanLower.includes(name);
+        const na = normalizeArtistName(h.result?.name);
+        return na && nc && na === nc;
       });
-      artistObj = match ? match.result : artistSection.hits[0].result;
+      if (match) {
+        artistObj = match.result;
+      }
     }
 
     if (!artistObj) {
@@ -4019,12 +4152,13 @@ async function fetchGeniusArtistArt(artistName) {
         const sec = sections.find(s => s && s.type === sType);
         if (sec && Array.isArray(sec.hits) && sec.hits.length > 0) {
           for (const h of sec.hits) {
-            if (h.result?._type === 'artist' || h.type === 'artist') {
-              artistObj = h.result;
-              break;
-            } else if (h.result?.primary_artist) {
-              artistObj = h.result.primary_artist;
-              break;
+            const cand = (h.result?._type === 'artist' || h.type === 'artist') ? h.result : h.result?.primary_artist;
+            if (cand && cand.name) {
+              const na = normalizeArtistName(cand.name);
+              if (na && nc && na === nc) {
+                artistObj = cand;
+                break;
+              }
             }
           }
           if (artistObj) break;
@@ -4033,6 +4167,8 @@ async function fetchGeniusArtistArt(artistName) {
     }
 
     if (!artistObj) return null;
+    const na = normalizeArtistName(artistObj.name);
+    if (!na || !nc || na !== nc) return null;
 
     const isDefault = u => !u || /default_avatar|default_cover|assets\.genius\.com/i.test(u);
     let banner = !isDefault(artistObj.header_image_url) ? artistObj.header_image_url : '';
@@ -4116,8 +4252,116 @@ async function fetchMusicBio(artistName, geniusArtistId = null) {
   return '';
 }
 
+async function fetchArchivedAlbums(artistName) {
+  if (!artistName) return [];
+  const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
+  const targetNorm = norm(artistName);
+  const archived = [];
+  const seenTitles = new Set();
+
+  
+  try {
+    const mbUrl = `https://musicbrainz.org/ws/2/release-group?query=artist:%22${encodeURIComponent(artistName)}%22+AND+(type:album+OR+type:ep)&fmt=json&limit=50`;
+    const mbData = await httpGetJson(mbUrl, 5000, {
+      'User-Agent': 'RiffMusic/1.0.0 (contact@riffmusic.app)',
+      'Accept': 'application/json'
+    });
+
+    if (mbData && Array.isArray(mbData['release-groups'])) {
+      for (const rg of mbData['release-groups']) {
+        if (!rg || !rg.title || !rg.id) continue;
+        const cTitle = norm(rg.title);
+        if (!cTitle || seenTitles.has(cTitle)) continue;
+
+        const credits = Array.isArray(rg['artist-credit']) ? rg['artist-credit'] : [];
+        const matchesArtist = credits.some(c => c && (norm(c.name) === targetNorm || norm(c.artist?.name) === targetNorm)) || credits.length === 0;
+        if (!matchesArtist) continue;
+
+        seenTitles.add(cTitle);
+        const year = rg['first-release-date'] ? rg['first-release-date'].slice(0, 4) : '';
+        const cover = `https://coverartarchive.org/release-group/${rg.id}/front-250`;
+        archived.push({
+          id: `mb_${rg.id}`,
+          title: rg.title,
+          artist: artistName,
+          cover: cover,
+          year: year,
+          trackCount: rg.count || 0,
+          recordType: (rg['primary-type'] || 'album').toLowerCase(),
+          source: 'musicbrainz-archive',
+          isArchived: true
+        });
+      }
+    }
+  } catch (_) {}
+
+  
+  try {
+    const iaUrl = `https://archive.org/advancedsearch.php?q=creator:(%22${encodeURIComponent(artistName)}%22)%20AND%20mediatype:(audio)&fl[]=identifier,title,year,publicdate,creator&rows=25&output=json`;
+    const iaData = await httpGetJson(iaUrl, 4500, {
+      'User-Agent': 'RiffMusic/1.0.0 (contact@riffmusic.app)',
+      'Accept': 'application/json'
+    });
+
+    if (iaData && iaData.response && Array.isArray(iaData.response.docs)) {
+      for (const doc of iaData.response.docs) {
+        if (!doc || !doc.title || !doc.identifier) continue;
+        let cleanTitle = doc.title.replace(new RegExp(`^${artistName}\\s*[-–—:]\\s*`, 'i'), '').trim();
+        const cTitle = norm(cleanTitle);
+        if (!cTitle || seenTitles.has(cTitle)) continue;
+
+        seenTitles.add(cTitle);
+        const year = doc.year ? String(doc.year) : (doc.publicdate ? String(doc.publicdate).slice(0, 4) : '');
+        const cover = `https://archive.org/services/img/${doc.identifier}`;
+        archived.push({
+          id: `ia_${doc.identifier}`,
+          title: cleanTitle,
+          artist: artistName,
+          cover: cover,
+          year: year,
+          trackCount: 0,
+          recordType: 'album',
+          source: 'internet-archive',
+          isArchived: true
+        });
+      }
+    }
+  } catch (_) {}
+
+  
+  try {
+    const itUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=album&limit=25`;
+    const itData = await fetchItunesJson(itUrl).catch(() => null);
+    if (itData && Array.isArray(itData.results)) {
+      for (const alb of itData.results) {
+        if (!alb || !alb.collectionName || !alb.collectionId) continue;
+        const cTitle = norm(alb.collectionName);
+        if (!cTitle || seenTitles.has(cTitle)) continue;
+        if (norm(alb.artistName) !== targetNorm && !norm(alb.artistName).includes(targetNorm)) continue;
+
+        seenTitles.add(cTitle);
+        const year = alb.releaseDate ? alb.releaseDate.slice(0, 4) : '';
+        const cover = alb.artworkUrl100 ? alb.artworkUrl100.replace('100x100', '600x600') : '';
+        archived.push({
+          id: String(alb.collectionId),
+          title: alb.collectionName,
+          artist: artistName,
+          cover: cover,
+          year: year,
+          trackCount: alb.trackCount || 0,
+          recordType: 'album',
+          source: 'itunes',
+          isArchived: false
+        });
+      }
+    }
+  } catch (_) {}
+
+  return archived;
+}
+
 async function fetchArtistInfo(artistName, hintTrack = '') {
-  const cleanName = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
+  const cleanName = (artistName || '').replace(/ - Topic|VEVO/gi, '').trim();
   if (!cleanName) {
     return { name: '', bio: '', avatar: '', banner: '', albums: [], isVerified: false, isKnownArtist: false, fans: 0, monthlyListeners: '', tracks: [] };
   }
@@ -4129,6 +4373,19 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
       .split('').map(c => cyrMap[c] !== undefined ? cyrMap[c] : c).join('')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+  const matchesTargetArtist = (trackArtist, trackTitle) => {
+    const rawArtist = String(trackArtist || '').trim();
+    if (!rawArtist) return false;
+    const tokens = rawArtist.split(/[,;&\/]|\b(?:feat\.?|ft\.?)\b/i).map(s => s.trim()).filter(Boolean);
+    const hasArtistToken = tokens.some(tok => norm(tok) === normClean || normTranslit(tok) === normTranslit(cleanName));
+    if (!hasArtistToken) return false;
+
+    const isRemixOrVariant = /\b(remix|bootleg|mashup|nightcore|karaoke|tribute|cover|8d|reworked)\b/i.test(String(trackTitle || ''));
+    if (isRemixOrVariant && norm(rawArtist) !== normClean) {
+      return false;
+    }
+    return true;
   };
   const cacheKey = (cleanName + '::' + (hintTrack || '')).toLowerCase();
   if (artistCache.has(cacheKey)) return artistCache.get(cacheKey);
@@ -4202,8 +4459,6 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
       if (!artistMatch) {
         artistMatch = matchingCandidates[0];
       }
-    } else if (candidates.length > 0 && (norm(candidates[0].name).includes(normClean) || normTranslit(candidates[0].name) === normTranslit(cleanName) || normTranslit(candidates[0].name).includes(normTranslit(cleanName)))) {
-      artistMatch = candidates[0];
     }
   } catch (_) {}
 
@@ -4297,13 +4552,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     } catch (_) {}
   } else {
     const ytmTracks = await searchYtmTracks(cleanName, 25).catch(() => []);
-    const filteredYtm = (ytmTracks || []).filter(t => {
-      const a = (t.artist || '').toLowerCase().trim();
-      const target = cleanName.toLowerCase().trim();
-      if (a === target || normTranslit(a) === normTranslit(cleanName)) return true;
-      const tokens = a.split(/[,&\/]|feat\.?|ft\.?/i).map(s => s.trim());
-      return tokens.includes(target) || tokens.some(tok => normTranslit(tok) === normTranslit(cleanName));
-    });
+    const filteredYtm = (ytmTracks || []).filter(t => t && matchesTargetArtist(t.artist, t.title));
     if (filteredYtm.length >= 4) {
       tracks = filteredYtm;
     }
@@ -4314,7 +4563,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
         const itunesSongsData = await fetchItunesJson(itunesSearchSongsUrl).catch(() => null);
         if (itunesSongsData && Array.isArray(itunesSongsData.results)) {
           const itTracks = itunesSongsData.results
-            .filter(item => item && item.wrapperType === 'track')
+            .filter(item => item && item.wrapperType === 'track' && matchesTargetArtist(item.artistName, item.trackName))
             .map(item => {
               const dur = Math.round((item.trackTimeMillis || 0) / 1000);
               const cover = item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : '';
@@ -4339,18 +4588,9 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
       } catch (_) {}
     }
 
-    if (tracks.length < 4) {
-      try {
-        const directResults = await directYoutubeSearch(`${cleanName} official audio`, true).catch(() => []);
-        if (directResults && directResults.length > 0) {
-          tracks = directResults;
-        }
-      } catch (_) {}
+    if (tracks.length === 0 && filteredYtm.length > 0) {
+      tracks = filteredYtm;
     }
-  }
-
-  if (!artistMatch && tracks.length > 0) {
-    resolvedName = tracks[0].artist.split(/[,;&\/]|feat\.?|ft\.?/i)[0].trim() || cleanName;
   }
 
   if (geniusArt && geniusArt.banner) {
@@ -4378,6 +4618,20 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     isVerified = true;
     isKnownArtist = true;
   }
+
+  try {
+    const archivedAlbums = await fetchArchivedAlbums(resolvedName || cleanName);
+    if (archivedAlbums && archivedAlbums.length > 0) {
+      const existingTitles = new Set(albums.map(a => (a.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim()));
+      for (const arch of archivedAlbums) {
+        const normT = (arch.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
+        if (normT && !existingTitles.has(normT)) {
+          existingTitles.add(normT);
+          albums.push(arch);
+        }
+      }
+    }
+  } catch (_) {}
 
   const ytmFallback = (tracks[0] && tracks[0].thumbnail) ? String(tracks[0].thumbnail).replace(/=w\d+-h\d+[^&?]*/i, '=w1400-h1400') : '';
   const result = {
@@ -4791,8 +5045,10 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
       }
       if (proxyRes.statusCode >= 400) {
         try { logger.log('warn', 'audio-proxy upstream ' + proxyRes.statusCode + ' host=' + parsed.hostname + ' c=' + (parsed.searchParams.get('c') || 'none')); } catch (_) {}
-        evictStreamCache(initialUrl);
-        evictStreamCache(targetUrl);
+        if (proxyRes.statusCode === 403 || proxyRes.statusCode === 410) {
+          evictStreamCache(initialUrl);
+          evictStreamCache(targetUrl);
+        }
         proxyRes.resume();
         res.writeHead(502, { 'Access-Control-Allow-Origin': '*' });
         return res.end('Upstream error');
@@ -4808,21 +5064,16 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
 
       res.writeHead(proxyRes.statusCode || 200, outHeaders);
       proxyRes.on('error', () => {
-        evictStreamCache(initialUrl);
-        evictStreamCache(targetUrl);
         try { res.destroy(); } catch (e) {}
       });
       proxyRes.pipe(res);
     });
 
-    proxyReq.setTimeout(30000, () => {
-      evictStreamCache(initialUrl);
+    proxyReq.setTimeout(120000, () => {
       proxyReq.destroy(new Error('Proxy timeout'));
     });
 
     proxyReq.on('error', () => {
-      evictStreamCache(initialUrl);
-      evictStreamCache(targetUrl);
       if (!res.headersSent) {
         res.writeHead(502, { 'Access-Control-Allow-Origin': '*' });
         res.end('Proxy error');
@@ -4843,7 +5094,6 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
       req.pipe(proxyReq);
     }
   } catch (e) {
-    evictStreamCache(initialUrl);
     if (!res.headersSent) {
       res.writeHead(500, { 'Access-Control-Allow-Origin': '*' });
       res.end('Proxy failed');
@@ -5636,6 +5886,7 @@ function extractGeniusLyrics(html) {
     }
     if (depth > 0) break;
   }
+  lyrics = lyrics.replace(/<div[^>]*data-exclude-from-selection="true"[^>]*>[\s\S]*?<\/div>/gi, '');
   let text = lyrics
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, '')
@@ -5656,107 +5907,106 @@ function extractGeniusLyrics(html) {
     .map(l => l.trim())
     .filter(l => {
       if (/^\d*\s*Contributors/i.test(l)) return false;
-      if (/Lyrics$/i.test(l) && !l.includes(' ') && l.length < 30) return false;
-      if (/^\[?.*Lyrics\]?$/i.test(l) && l.toLowerCase().includes('lyrics') && !l.includes('[')) return false;
+      if (/(?:Lyrics|Текст песни)\s*$/i.test(l)) return false;
+      if (/^You might also like$/i.test(l)) return false;
+      if (/^\d*\s*Embed$/i.test(l)) return false;
       return true;
     });
-  return lines.join('\n').trim();
+  let cleanLyrics = lines.join('\n').trim();
+  cleanLyrics = cleanLyrics.replace(/^(?:\[[^\]]*\]\s*)?.*?(?:Lyrics|Текст песни)\s*\n+/i, '').trim();
+  const splitted = cleanLyrics.split('\n');
+  if (splitted.length >= 8) {
+    const half = Math.floor(splitted.length / 2);
+    if (splitted.slice(0, half).join('\n').trim() === splitted.slice(half).join('\n').trim()) {
+      cleanLyrics = splitted.slice(0, half).join('\n').trim();
+    }
+  }
+  return cleanLyrics;
 }
 
-function fetchGeniusLyrics(title, artist) {
-  return new Promise((resolve) => {
-    const query = (title + ' ' + artist)
-      .replace(/\s*\(feat\.[^)]*\)/gi, '')
-      .replace(/\s*\[feat\.[^\]]*\]/gi, '')
-      .replace(/\s*\(featuring[^)]*\)/gi, '')
-      .replace(/\s*feat\.[^\s]+/gi, '')
-      .replace(/\s*-\s*remaster(ed)?(\s*\d+)?/gi, '')
-      .replace(/\s*\(live[^)]*\)/gi, '')
-      .replace(/\s*\[live[^\]]*\]/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+async function fetchGeniusLyrics(title, artist) {
+  try {
+    const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
+    const query = (cleanTitle + ' ' + cleanArtist).trim() || ((title || '') + ' ' + (artist || '')).trim();
+    if (!query) return null;
 
-    const searchUrl = `https://genius.com/api/search/song?q=${encodeURIComponent(query)}`;
-    const req = https.get(searchUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      timeout: 8000
-    }, (res) => {
-      const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        const data = decodeUtf8Chunks(chunks);
-        if (res.statusCode !== 200) {
-          logNetworkFailure(searchUrl);
-          return resolve(null);
-        }
-        let hits = [];
-        try {
-          const json = JSON.parse(data);
-          hits = (json.response && json.response.sections && json.response.sections[0] && json.response.sections[0].hits) || [];
-        } catch (_) {}
-        if (hits.length === 0) return resolve(null);
-
-        const normSimple = s => (s || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
-        const nTitle = normSimple(title);
-        const nArtist = normSimple(artist);
-        let bestHit = hits[0];
-        let bestScore = -1;
-        for (const h of hits) {
-          if (!h.result || !h.result.url) continue;
-          const hTitle = normSimple(h.result.title);
-          const hArtist = normSimple(h.result.artist_names);
-          let score = 0;
-          if (hTitle && nTitle && (hTitle === nTitle || hTitle.includes(nTitle) || nTitle.includes(hTitle))) score += 2;
-          if (hArtist && nArtist && (hArtist === nArtist || hArtist.includes(nArtist) || nArtist.includes(hArtist))) score += 1;
-          if (score > bestScore) {
-            bestScore = score;
-            bestHit = h;
+    const geniusHeaders = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' };
+    let hits = [];
+    try {
+      const multiData = await httpGetJson('https://genius.com/api/search/multi?q=' + encodeURIComponent(query), 6000, geniusHeaders);
+      const sections = multiData?.response?.sections || [];
+      for (const sec of sections) {
+        if (Array.isArray(sec?.hits)) {
+          for (const h of sec.hits) {
+            const url = h?.result?.url;
+            if (typeof url === 'string' && url.endsWith('-lyrics')) {
+              hits.push(h);
+            }
           }
         }
+      }
+    } catch (_) {}
 
-        const songUrl = bestHit && bestHit.result && bestHit.result.url;
-        if (!songUrl) return resolve(null);
-
-        const pageReq = https.get(songUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-          timeout: 8000
-        }, (pageRes) => {
-          const chunks = [];
-          pageRes.on('data', chunk => chunks.push(chunk));
-          pageRes.on('end', () => {
-            const html = decodeUtf8Chunks(chunks);
-            if (pageRes.statusCode !== 200) {
-              logNetworkFailure(songUrl);
-              return resolve(null);
+    if (hits.length === 0) {
+      try {
+        const songData = await httpGetJson('https://genius.com/api/search/song?q=' + encodeURIComponent(query), 6000, geniusHeaders);
+        const secHits = songData?.response?.sections?.[0]?.hits || songData?.response?.hits;
+        if (Array.isArray(secHits)) {
+          for (const h of secHits) {
+            const url = h?.result?.url;
+            if (typeof url === 'string' && url.endsWith('-lyrics')) {
+              hits.push(h);
             }
-            try {
-              const lyrics = extractGeniusLyrics(html);
-              if (lyrics && lyrics.length > 0) return resolve(lyrics);
-            } catch (_) {}
-            resolve(null);
-          });
-        });
-        pageReq.on('timeout', () => {
-          pageReq.destroy();
-          logNetworkFailure(songUrl);
-          resolve(null);
-        });
-        pageReq.on('error', () => {
-          logNetworkFailure(songUrl);
-          resolve(null);
-        });
-      });
-    });
-    req.on('timeout', () => {
-      req.destroy();
-      logNetworkFailure(searchUrl);
-      resolve(null);
-    });
-    req.on('error', () => {
-      logNetworkFailure(searchUrl);
-      resolve(null);
-    });
-  });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (hits.length > 0) {
+      const normSimple = s => (s || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
+      const nTitle = normSimple(cleanTitle || title);
+      const nArtist = normSimple(cleanArtist || artist);
+      let bestHit = hits[0];
+      let bestScore = -1;
+      for (const h of hits) {
+        if (!h || !h.result || !h.result.url) continue;
+        const hTitle = normSimple(h.result.title);
+        const hArtist = normSimple(h.result.artist_names);
+        let score = 0;
+        if (hTitle && nTitle && (hTitle === nTitle || hTitle.includes(nTitle) || nTitle.includes(hTitle))) score += 2;
+        if (hArtist && nArtist && (hArtist === nArtist || hArtist.includes(nArtist) || nArtist.includes(hArtist))) score += 1;
+        if (score > bestScore) {
+          bestScore = score;
+          bestHit = h;
+        }
+      }
+
+      const songUrl = bestHit && bestHit.result && bestHit.result.url;
+      if (songUrl) {
+        try {
+          const fetched = await fetchHtmlWithRedirects(songUrl, 5, 7000);
+          if (fetched && fetched.body) {
+            const lyrics = extractGeniusLyrics(fetched.body);
+            if (lyrics) return lyrics;
+          }
+        } catch (_) {}
+      }
+    }
+
+    const fb = await fetchLrcLib(title, artist).catch(() => null);
+    if (fb) {
+      return typeof fb === 'string' ? fb : (fb.plainLyrics || fb.syncedLyrics || null);
+    }
+    return null;
+  } catch (_) {
+    try {
+      const fb = await fetchLrcLib(title, artist).catch(() => null);
+      if (fb) {
+        return typeof fb === 'string' ? fb : (fb.plainLyrics || fb.syncedLyrics || null);
+      }
+    } catch (__) {}
+    return null;
+  }
 }
 
 function parseYrcWords(rest) {
@@ -6261,8 +6511,8 @@ function isLyricsExplicit(lyrics) {
   return /\b(fuck|fucking|fucked|fucker|fucks|shit|bitch|bitches|bitching|asshole|cunt|nigger|nigga|dick|pussy)\b|ху[йеяёюи]|пизд|залуп|муда[кч]|мудил|г[ао]ндон|дерьм|дроч|(?:^|[^а-яё])(?:бля[а-яё]*|сук[аиуео]|суч[екьяа][а-яё]*)|(?:^|[^а-яё])(?:[её]б[а-яё]+|[её]б\b|(?:вы|за|на|до|по|пере|про|разъ|раз|съ|въ|под|от|у)[её]б[а-яё]*)/i.test(lyrics);
 }
 
-async function handleLyrics(req, res, title, artist, allowOnline = true, source = 'lrclib', duration = 0) {
-  const normSource = source || 'lrclib';
+async function handleLyrics(req, res, title, artist, allowOnline = true, source = 'auto', duration = 0) {
+  const normSource = source || 'auto';
   const cacheKey = `${artist || ''}:${title || ''}:${normSource}`.toLowerCase();
   let cached = lyricsCache.get(cacheKey);
   if (cached?.promise) {
@@ -6338,7 +6588,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
       }
     }
 
-    if (normSource !== 'genius' && fs.existsSync(fetchedLyricsPath)) {
+    if (fs.existsSync(fetchedLyricsPath)) {
       try {
         const diskLyrics = await fs.promises.readFile(fetchedLyricsPath, 'utf-8');
         if (hasBrokenLyricText(diskLyrics)) {
@@ -6375,10 +6625,13 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
       } else if (normSource === 'genius') {
         rawLyrics = await fetchGeniusLyrics(title, artist);
         successfulBackend = 'genius';
+      } else if (normSource === 'lrclib') {
+        const lrcLib = await fetchLrcLib(title, artist);
+        if (lrcLib && lrcLib.instrumental) return sendInstrumental();
+        rawLyrics = typeof lrcLib === 'string' ? lrcLib : (lrcLib?.syncedLyrics || lrcLib?.plainLyrics || '');
+        successfulBackend = 'lrclib';
       } else {
         let plainFallback = '';
-
-        
 
         const lrcLib = await fetchLrcLib(title, artist);
         if (lrcLib && lrcLib.instrumental) {
@@ -6392,7 +6645,13 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
           plainFallback = plainFallback || lrcText;
         }
 
-        
+        if (!rawLyrics) {
+          const gn = await fetchGeniusLyrics(title, artist);
+          if (gn) {
+            rawLyrics = gn;
+            successfulBackend = 'genius';
+          }
+        }
 
         if (!rawLyrics) {
           const mm = await fetchMusixmatchLyrics(title, artist);
@@ -6404,8 +6663,6 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
           }
         }
 
-        
-
         if (!rawLyrics) {
           const kg = await fetchKugouLyrics(title, artist, duration);
           if (kg?.syncedLyrics && /\[\d{2}:\d{2}/.test(kg.syncedLyrics)) {
@@ -6415,8 +6672,6 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
             plainFallback = plainFallback || kg.plainLyrics;
           }
         }
-
-        
 
         if (!rawLyrics) {
           const ne = await fetchNeteaseLyrics(title, artist, duration);
@@ -6428,25 +6683,15 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
           }
         }
 
-        
-
-        if (!rawLyrics) {
-          if (plainFallback) {
-            rawLyrics = plainFallback;
-          } else {
-            const gn = await fetchGeniusLyrics(title, artist);
-            if (gn) {
-              rawLyrics = gn;
-              successfulBackend = 'genius';
-            }
-          }
+        if (!rawLyrics && plainFallback) {
+          rawLyrics = plainFallback;
         }
       }
 
       if (hasBrokenLyricText(rawLyrics)) rawLyrics = '';
 
       if (rawLyrics && rawLyrics.trim().length > 0) {
-        if (successfulBackend && successfulBackend !== 'genius') {
+        if (successfulBackend) {
           try {
             await fs.promises.writeFile(fetchedLyricsPath, rawLyrics, 'utf-8');
           } catch (e) {}
@@ -6458,7 +6703,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
       }
 
       if (lyricsCache.get(cacheKey) === inFlightEntry) {
-        lyricsCache.set(cacheKey, { text: '', isCustom: false });
+        lyricsCache.delete(cacheKey);
       }
       return sendLyrics('');
     } catch (err) {
@@ -6860,6 +7105,8 @@ function fetchHtmlWithRedirects(targetUrl, maxRedirects = 5, timeoutMs = 15000) 
       try { parsed = new URL(currentUrl); } catch (e) { return reject(e); }
       const client = parsed.protocol === 'http:' ? http : https;
       const req = client.get(currentUrl, {
+        family: 4,
+        agent: parsed.protocol === 'https:' ? keepAliveHttpsAgent : undefined,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept-Language': 'en-US,en;q=0.9'
@@ -8940,7 +9187,96 @@ async function handleAlbumTracks(req, res, parsedUrl) {
     let album = null;
     let tracks = [];
 
-    if (id) {
+    if (id && id.startsWith('mb_')) {
+      try {
+        const rgId = id.slice(3);
+        const rgUrl = `https://musicbrainz.org/ws/2/release-group/${encodeURIComponent(rgId)}?inc=releases&fmt=json`;
+        const rgData = await httpGetJson(rgUrl, 5000, {
+          'User-Agent': 'RiffMusic/1.0.0 (contact@riffmusic.app)',
+          'Accept': 'application/json'
+        });
+        const releases = (rgData && Array.isArray(rgData.releases)) ? rgData.releases : [];
+        if (releases.length > 0) {
+          const relId = releases[0].id;
+          const relUrl = `https://musicbrainz.org/ws/2/release/${encodeURIComponent(relId)}?inc=recordings&fmt=json`;
+          const relData = await httpGetJson(relUrl, 5000, {
+            'User-Agent': 'RiffMusic/1.0.0 (contact@riffmusic.app)',
+            'Accept': 'application/json'
+          });
+          const media = (relData && Array.isArray(relData.media)) ? relData.media : [];
+          const mbTracks = [];
+          media.forEach(m => {
+            const trks = Array.isArray(m.tracks) ? m.tracks : [];
+            trks.forEach(t => {
+              if (!t || !t.title) return;
+              const dur = Math.round((t.length || 180000) / 1000);
+              mbTracks.push({
+                id: `mb_${t.id || t.position}`,
+                no: t.position || mbTracks.length + 1,
+                disc: m.position || 1,
+                title: t.title,
+                artist: artist || (t['artist-credit'] && t['artist-credit'][0]?.name) || '',
+                duration: dur,
+                durationMs: t.length || (dur * 1000),
+                thumbnail: `https://coverartarchive.org/release-group/${rgId}/front-250`,
+                isExplicit: isTextExplicit(t.title)
+              });
+            });
+          });
+          if (mbTracks.length > 0) {
+            tracks = mbTracks;
+            album = {
+              id: id,
+              title: title || rgData.title || '',
+              artist: artist || '',
+              year: rgData['first-release-date'] ? rgData['first-release-date'].slice(0, 4) : '',
+              trackCount: tracks.length,
+              cover: `https://coverartarchive.org/release-group/${rgId}/front-250`
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (id && id.startsWith('ia_') && tracks.length === 0) {
+      try {
+        const iaId = id.slice(3);
+        const iaMetaUrl = `https://archive.org/metadata/${encodeURIComponent(iaId)}/files`;
+        const iaData = await httpGetJson(iaMetaUrl, 5000, {
+          'User-Agent': 'RiffMusic/1.0.0 (contact@riffmusic.app)',
+          'Accept': 'application/json'
+        });
+        const files = (iaData && Array.isArray(iaData.result)) ? iaData.result : [];
+        const audioFiles = files.filter(f => f && (/\.(mp3|m4a|flac|wav|ogg)$/i.test(f.name || '') || /audio/i.test(f.format || '')));
+        if (audioFiles.length > 0) {
+          tracks = audioFiles.map((f, idx) => {
+            const trackTitle = (f.title || f.name || '').replace(/\.[^/.]+$/, '').replace(/^\d+[\s.-]+/, '').trim();
+            const dur = Math.round(parseFloat(f.length || '180') || 180);
+            return {
+              id: `ia_${iaId}_${idx}`,
+              no: parseInt(f.track || `${idx + 1}`, 10) || (idx + 1),
+              disc: 1,
+              title: trackTitle || f.name || `Track ${idx + 1}`,
+              artist: f.creator || artist || '',
+              duration: dur,
+              durationMs: dur * 1000,
+              thumbnail: `https://archive.org/services/img/${iaId}`,
+              isExplicit: isTextExplicit(trackTitle)
+            };
+          });
+          album = {
+            id: id,
+            title: title || '',
+            artist: artist || '',
+            year: '',
+            trackCount: tracks.length,
+            cover: `https://archive.org/services/img/${iaId}`
+          };
+        }
+      } catch (_) {}
+    }
+
+    if (tracks.length === 0 && id && !id.startsWith('mb_') && !id.startsWith('ia_')) {
       try {
         const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&entity=song`;
         const data = await fetchItunesJson(url);
@@ -8975,7 +9311,7 @@ async function handleAlbumTracks(req, res, parsedUrl) {
       } catch (_) {}
     }
 
-    if (tracks.length === 0 && id) {
+    if (tracks.length === 0 && id && !id.startsWith('mb_') && !id.startsWith('ia_')) {
       try {
         const dzUrl = `https://api.deezer.com/album/${encodeURIComponent(id)}/tracks?limit=50`;
         const dzData = await new Promise((resolve) => {
@@ -9044,6 +9380,34 @@ async function handleAlbumTracks(req, res, parsedUrl) {
             year: (first && first.releaseDate) ? first.releaseDate.slice(0, 4) : '',
             trackCount: tracks.length,
             cover: first ? upgradeArtworkUrl(first.artworkUrl100 || '') : ''
+          };
+        }
+      } catch (_) {}
+    }
+
+    if (tracks.length === 0 && (title || artist)) {
+      try {
+        const query = `${artist || ''} ${title || ''} album`.trim();
+        const ytmTracks = await searchYtmTracks(query, 25).catch(() => []);
+        if (ytmTracks && ytmTracks.length > 0) {
+          tracks = ytmTracks.map((item, idx) => ({
+            id: item.id || `yt_${idx}`,
+            no: idx + 1,
+            disc: 1,
+            title: item.title,
+            artist: item.artist || artist || '',
+            duration: item.duration || 180,
+            durationMs: (item.duration || 180) * 1000,
+            thumbnail: item.thumbnail || '',
+            isExplicit: item.isExplicit || false
+          }));
+          album = album || {
+            id,
+            title: title || '',
+            artist: artist || '',
+            year: '',
+            trackCount: tracks.length,
+            cover: tracks[0]?.thumbnail || ''
           };
         }
       } catch (_) {}
@@ -10336,7 +10700,7 @@ async function requestHandler(req, res) {
     const title = parsedUrl.query.title || '';
     const artist = parsedUrl.query.artist || '';
     const allowOnline = parsedUrl.query.online !== '0';
-    const source = parsedUrl.query.source || 'lrclib';
+    const source = parsedUrl.query.source || 'auto';
     const duration = parseFloat(parsedUrl.query.duration) || 0;
     return handleLyrics(req, res, title, artist, allowOnline, source, duration);
   }
