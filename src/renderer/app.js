@@ -1059,7 +1059,12 @@ const EXCLUDED_PERSONAL_KEYS = new Set([
   'riff_failed_tracks', 'riff_mix_feedback', 'riff_pinned_tracks',
   'riff_sidebar_pinned_tracks', 'riff_pinned_playlists', 'riff_user_nickname',
   'riff_user_avatar', 'riff_lastfm_sk', 'riff_lastfm_user',
-  'riff_spotify_client_id', 'riff_owner_profile_backup'
+  'riff_spotify_client_id', 'riff_owner_profile_backup',
+  'devsize_custom_presets', 'riff_track_trims', 'riff_queue_state',
+  'riff_track_art', 'riff_welcome_bg', 'riff_track_renames',
+  'riff_last_playback_state', 'riff_sidebar_library_tracks',
+  'riff_blocked_tracks', 'riff_top_moments', 'riff_blocked_audio_sources',
+  'riff_lottie_lib_cache'
 ]);
 
 function getDefaultsJsonSync() {
@@ -1082,6 +1087,7 @@ try {
     const defs = getDefaultsJsonSync();
     if (defs && typeof defs === 'object') {
       for (const [k, v] of Object.entries(defs)) {
+        if (EXCLUDED_PERSONAL_KEYS.has(k)) continue;
         if (localStorage.getItem(k) === null) {
           localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
         }
