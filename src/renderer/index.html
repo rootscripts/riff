@@ -750,10 +750,10 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
         <div class="search-results-container hidden view-hidden" id="search-results-container">
           <div class="search-filter-chips" id="search-filter-chips">
-            <button type="button" class="search-chip active" data-filter="all">All</button>
-            <button type="button" class="search-chip" data-filter="songs">Songs</button>
-            <button type="button" class="search-chip" data-filter="artists">Artists</button>
-            <button type="button" class="search-chip" data-filter="albums">Albums</button>
+            <button type="button" class="search-chip active" data-filter="all" data-i18n>All</button>
+            <button type="button" class="search-chip" data-filter="songs" data-i18n>Songs</button>
+            <button type="button" class="search-chip" data-filter="artists" data-i18n>Artists</button>
+            <button type="button" class="search-chip" data-filter="albums" data-i18n>Albums</button>
             <button type="button" class="search-chip" data-filter="playlists" data-i18n>Playlists</button>
           </div>
           <div id="search-artist-card-container"></div>
@@ -779,33 +779,35 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             </div>
           </div>
         </div>
-        <div class="playlist-table-toolbar">
-          <select class="pill-select" id="favorites-sort" title="Sort favorites" aria-label="Sort favorites" style="display:none">
-            <option value="manual">Manual order</option>
-            <option value="added-desc">Date added (newest)</option>
-            <option value="added-asc">Date added (oldest)</option>
-          </select>
-          <button type="button" class="sp-quiet-icon-btn" id="btn-toggle-favorites-search" title="Search favorites"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg></button>
-          <div class="view-search-box" id="favorites-search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
-            <input type="text" class="view-search-input" id="favorites-search-input" placeholder="Search favorites..." autocomplete="off">
-          </div>
-          <div class="m3-dropdown" id="favorites-sort-dropdown">
-            <button class="sp-quiet-icon-btn m3-dropdown-trigger" id="favorites-sort-trigger" type="button" title="Sort favorites">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg><span id="favorites-sort-label" style="display:none">Manual order</span>
-            </button>
-            <div class="m3-dropdown-menu" id="favorites-sort-menu">
-              <button class="m3-dropdown-option selected" data-value="manual" type="button">Manual order</button>
-              <button class="m3-dropdown-option" data-value="added-desc" type="button">Date added (newest)</button>
-              <button class="m3-dropdown-option" data-value="added-asc" type="button">Date added (oldest)</button>
+        <div class="playlist-content-section" id="favorites-main-content">
+          <div class="playlist-table-toolbar">
+            <select class="pill-select" id="favorites-sort" title="Sort favorites" aria-label="Sort favorites" style="display:none">
+              <option value="manual">Manual order</option>
+              <option value="added-desc">Date added (newest)</option>
+              <option value="added-asc">Date added (oldest)</option>
+            </select>
+            <button type="button" class="sp-quiet-icon-btn" id="btn-toggle-favorites-search" title="Search favorites"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg></button>
+            <div class="view-search-box" id="favorites-search-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+              <input type="text" class="view-search-input" id="favorites-search-input" placeholder="Search favorites..." autocomplete="off">
+            </div>
+            <div class="m3-dropdown" id="favorites-sort-dropdown">
+              <button class="sp-quiet-icon-btn m3-dropdown-trigger" id="favorites-sort-trigger" type="button" title="Sort favorites">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg><span id="favorites-sort-label" style="display:none">Manual order</span>
+              </button>
+              <div class="m3-dropdown-menu" id="favorites-sort-menu">
+                <button class="m3-dropdown-option selected" data-value="manual" type="button">Manual order</button>
+                <button class="m3-dropdown-option" data-value="added-desc" type="button">Date added (newest)</button>
+                <button class="m3-dropdown-option" data-value="added-asc" type="button">Date added (oldest)</button>
+              </div>
             </div>
           </div>
+          <div class="sp-tracks-table-head"><span class="sp-th-num">#</span><span class="sp-th-title" data-i18n>Title</span><span class="sp-th-album" data-i18n>Album</span><span class="sp-th-plays" data-i18n>Plays</span><span class="sp-th-date" data-i18n>Date added</span><span class="sp-th-dur"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span></div>
+          <div class="tracks-list" id="favorites-tracks-list">
+            <div class="empty-hint">No favorite tracks yet. Click the heart icon on any song to save it.</div>
+          </div>
+          <div class="playlist-recs-section hidden" id="favorites-recs-section"><div class="playlist-recs-header"><div><h3 class="playlist-recs-title" data-i18n>Recommended for you</h3><span class="playlist-recs-sub" data-i18n>Tracks we picked to add to your Liked Songs</span></div><button type="button" class="sp-quiet-icon-btn" id="btn-refresh-favorites-recs" title="Refresh"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></div><div class="tracks-list" id="favorites-recs-list"></div></div>
         </div>
-        <div class="sp-tracks-table-head"><span class="sp-th-num">#</span><span class="sp-th-title" data-i18n>Title</span><span class="sp-th-album" data-i18n>Album</span><span class="sp-th-plays" data-i18n>Plays</span><span class="sp-th-date" data-i18n>Date added</span><span class="sp-th-dur"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span></div>
-        <div class="tracks-list" id="favorites-tracks-list">
-          <div class="empty-hint">No favorite tracks yet. Click the heart icon on any song to save it.</div>
-        </div>
-        <div class="playlist-recs-section hidden" id="favorites-recs-section"><div class="playlist-recs-header"><div><h3 class="playlist-recs-title" data-i18n>Recommended for you</h3><span class="playlist-recs-sub" data-i18n>Tracks we picked to add to your Liked Songs</span></div><button type="button" class="sp-quiet-icon-btn" id="btn-refresh-favorites-recs" title="Refresh"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></div><div class="tracks-list" id="favorites-recs-list"></div></div>
       </section>
 
       <section class="content-view" id="view-albums"><div class="search-albums-row" id="saved-albums-grid" style="flex-wrap: wrap;"></div></section>
@@ -873,11 +875,11 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
       </section>
 
       <section class="content-view" id="view-playlist-detail">
-        <div class="hero-fx" id="playlist-hero-fx"></div>
-        <button class="btn-icon-pill" id="btn-back-playlists" title="Back" style="margin-bottom: 12px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-        </button>
-        <div class="playlist-detail-header">
+        <div class="playlist-detail-header" id="playlist-detail-header">
+          <div class="hero-fx" id="playlist-hero-fx"></div>
+          <button class="btn-icon-pill" id="btn-back-playlists" title="Back">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          </button>
           <div class="playlist-cover-wrapper" id="playlist-detail-cover"></div>
           <div class="playlist-meta">
             <span class="playlist-type-badge">Playlist</span>
@@ -907,26 +909,28 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             </div>
           </div>
         </div>
-        <div class="playlist-table-toolbar">
-          <button type="button" class="sp-quiet-icon-btn" id="btn-toggle-playlist-search" title="Search in playlist"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg></button>
-          <div class="view-search-box" id="playlist-search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
-            <input type="text" class="view-search-input" id="playlist-search-input" placeholder="Search in playlist..." autocomplete="off">
-          </div>
-          <div class="m3-dropdown" id="playlist-sort-dropdown">
-            <button class="m3-dropdown-trigger" id="playlist-sort-trigger" type="button">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg><span id="playlist-sort-label" style="display:none">Manual order</span>
-            </button>
-            <div class="m3-dropdown-menu" id="playlist-sort-menu">
-              <button class="m3-dropdown-option selected" data-value="manual" type="button">Manual order</button>
-              <button class="m3-dropdown-option" data-value="added-desc" type="button">Date added (newest)</button>
-              <button class="m3-dropdown-option" data-value="added-asc" type="button">Date added (oldest)</button>
+        <div class="playlist-content-section" id="playlist-main-content">
+          <div class="playlist-table-toolbar">
+            <button type="button" class="sp-quiet-icon-btn" id="btn-toggle-playlist-search" title="Search in playlist"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg></button>
+            <div class="view-search-box" id="playlist-search-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+              <input type="text" class="view-search-input" id="playlist-search-input" placeholder="Search in playlist..." autocomplete="off">
+            </div>
+            <div class="m3-dropdown" id="playlist-sort-dropdown">
+              <button class="m3-dropdown-trigger" id="playlist-sort-trigger" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg><span id="playlist-sort-label" style="display:none">Manual order</span>
+              </button>
+              <div class="m3-dropdown-menu" id="playlist-sort-menu">
+                <button class="m3-dropdown-option selected" data-value="manual" type="button">Manual order</button>
+                <button class="m3-dropdown-option" data-value="added-desc" type="button">Date added (newest)</button>
+                <button class="m3-dropdown-option" data-value="added-asc" type="button">Date added (oldest)</button>
+              </div>
             </div>
           </div>
+          <div class="sp-tracks-table-head"><span class="sp-th-num">#</span><span class="sp-th-title" data-i18n>Title</span><span class="sp-th-album" data-i18n>Album</span><span class="sp-th-plays" data-i18n>Plays</span><span class="sp-th-date" data-i18n>Date added</span><span class="sp-th-dur"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span></div>
+          <div class="tracks-list" id="playlist-tracks-list"></div>
+          <div class="playlist-recs-section hidden" id="playlist-recs-section"><div class="playlist-recs-header"><div><h3 class="playlist-recs-title" data-i18n>Recommended</h3><span class="playlist-recs-sub" data-i18n>Based on what's in this playlist</span></div><button type="button" class="sp-quiet-icon-btn" id="btn-refresh-playlist-recs" title="Refresh"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></div><div class="tracks-list" id="playlist-recs-list"></div></div>
         </div>
-        <div class="sp-tracks-table-head"><span class="sp-th-num">#</span><span class="sp-th-title" data-i18n>Title</span><span class="sp-th-album" data-i18n>Album</span><span class="sp-th-plays" data-i18n>Plays</span><span class="sp-th-date" data-i18n>Date added</span><span class="sp-th-dur"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span></div>
-        <div class="tracks-list" id="playlist-tracks-list"></div>
-        <div class="playlist-recs-section hidden" id="playlist-recs-section"><div class="playlist-recs-header"><div><h3 class="playlist-recs-title" data-i18n>Recommended</h3><span class="playlist-recs-sub" data-i18n>Based on what's in this playlist</span></div><button type="button" class="sp-quiet-icon-btn" id="btn-refresh-playlist-recs" title="Refresh"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></div><div class="tracks-list" id="playlist-recs-list"></div></div>
       </section>
 
       <section class="content-view" id="view-album">
@@ -982,29 +986,62 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
           </div>
         </div>
 
-        <div class="artist-content-section">
-          <nav class="artist-horiz-tabs" id="artist-horiz-tabs">
-            <button class="artist-horiz-tab active" id="artist-tab-tracks" data-artist-tab="tracks" type="button">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-              <span>Tracks</span>
-            </button>
-            <button class="artist-horiz-tab" id="artist-tab-albums" data-artist-tab="albums" type="button">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-              <span>Albums</span>
-            </button>
-          </nav>
-          <div class="artist-tab-pane active" id="artist-pane-tracks">
-            <div class="artist-tracks-header">
-              <h2 class="artist-tracks-title">Popular Songs</h2>
-              <button class="btn-text artist-tracks-toggle hidden" id="btn-artist-tracks-toggle">Show all</button>
+        <div class="artist-content-section" id="artist-main-content">
+          
+          <div class="artist-section" id="artist-section-popular">
+            <div class="artist-section-header" id="artist-hdr-popular" role="button" tabindex="0" title="View all popular songs">
+              <div class="artist-section-title-wrap">
+                <h2 class="artist-section-title">Popular songs</h2>
+              </div>
+              <button class="artist-section-arrow-btn" id="btn-more-popular" type="button" aria-label="View all popular songs">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
             </div>
-            <div class="tracks-list" id="artist-tracks-list"></div>
+            <div class="tracks-list" id="artist-popular-tracks-list"></div>
           </div>
-          <div class="artist-tab-pane hidden" id="artist-pane-albums">
-            <div class="artist-tracks-header">
-              <h2 class="artist-tracks-title">Albums</h2>
+
+          
+          <div class="artist-section" id="artist-section-albums">
+            <div class="artist-section-header" id="artist-hdr-albums" role="button" tabindex="0" title="View all albums">
+              <div class="artist-section-title-wrap">
+                <h2 class="artist-section-title">Albums</h2>
+              </div>
+              <button class="artist-section-arrow-btn" id="btn-more-albums" type="button" aria-label="View all albums">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
             </div>
-            <div class="artist-albums-grid" id="artist-albums-grid"></div>
+            <div class="artist-albums-shelf horizontal-scroll" id="artist-albums-shelf"></div>
+          </div>
+
+          
+          <div class="artist-section" id="artist-section-all-tracks">
+            <div class="artist-section-header" id="artist-hdr-all-tracks" role="button" tabindex="0" title="View full track list">
+              <div class="artist-section-title-wrap">
+                <h2 class="artist-section-title">All tracks</h2>
+                <span class="artist-tracks-count-badge" id="artist-tracks-count-badge"></span>
+              </div>
+              <button class="artist-section-arrow-btn" id="btn-more-all-tracks" type="button" aria-label="View full track list">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+            <div class="tracks-list" id="artist-all-tracks-list"></div>
+          </div>
+        </div>
+
+        
+        <div class="artist-category-detail hidden" id="artist-category-detail">
+          <div class="artist-category-header">
+            <button class="btn-icon-pill btn-back-artist-cat" id="btn-back-artist-cat" title="Back to artist">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <div class="artist-category-info">
+              <h1 class="artist-category-title" id="artist-category-title">Albums</h1>
+              <span class="artist-category-sub" id="artist-category-sub"></span>
+            </div>
+          </div>
+          <div class="artist-category-body">
+            <div class="tracks-list hidden" id="artist-cat-tracks-list"></div>
+            <div class="artist-albums-grid hidden" id="artist-cat-albums-grid"></div>
           </div>
         </div>
       </section>
@@ -1524,18 +1561,18 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   <span class="setting-hint" data-i18n>Choose between standard equalizer bars, connected liquid wave, or Swift</span>
                 </div>
                 <select class="pill-select" id="viz-style-dropdown" style="display:none">
-                  <option value="bars">Bars (Default)</option>
-                  <option value="wave">Wave</option>
+                  <option value="bars" data-i18n>Bars (Default)</option>
+                  <option value="wave" data-i18n>Wave</option>
                   <option value="swift">Swift</option>
                 </select>
                 <div class="m3-dropdown" id="viz-style-m3-dropdown" style="width: 190px; flex-shrink: 0;">
                   <button class="m3-dropdown-trigger" id="viz-style-m3-trigger" type="button">
-                    <span class="m3-dropdown-label" id="viz-style-m3-label">Bars (Default)</span>
+                    <span class="m3-dropdown-label" id="viz-style-m3-label" data-i18n>Bars (Default)</span>
                     <svg class="m3-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                   </button>
                   <div class="m3-dropdown-menu" id="viz-style-m3-menu">
-                    <button class="m3-dropdown-option selected" data-value="bars" type="button">Bars (Default)</button>
-                    <button class="m3-dropdown-option" data-value="wave" type="button">Wave</button>
+                    <button class="m3-dropdown-option selected" data-value="bars" type="button" data-i18n>Bars (Default)</button>
+                    <button class="m3-dropdown-option" data-value="wave" type="button" data-i18n>Wave</button>
                     <button class="m3-dropdown-option" data-value="swift" type="button">Swift</button>
                   </div>
                 </div>
@@ -3008,20 +3045,13 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   </div>
 
                   <div class="setting-item" id="setting-home-layout">
-                    <div class="setting-item-top">
-                      <span class="setting-name">Home layout</span>
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <img id="setting-home-app-icon" src="../../assets/02-editor.svg" width="18" height="18" style="border-radius: 4px; object-fit: contain; display: inline-block;" alt="">
+                        <span class="setting-name">Riff Home</span>
+                      </div>
+                      <button type="button" class="effect-switch-btn" id="btn-toggle-riff-home"><span class="thumb"></span></button>
                     </div>
-                    <div class="theme-mode-toggle" id="home-layout-toggle">
-                      <button type="button" class="theme-mode-btn active" id="home-layout-spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
-                        <span>Spotify</span>
-                      </button>
-                      <button type="button" class="theme-mode-btn" id="home-layout-riff" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                        <img src="../../assets/icon.png" width="16" height="16" style="border-radius: 4px; object-fit: contain;" alt="">
-                        <span>Riff</span>
-                      </button>
-                    </div>
-                    <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">Spotify: rows of mixes and quick access. Riff: the carousel.</div>
                   </div>
 
                   <div class="setting-item">
@@ -3103,7 +3133,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.7.0</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.7.5</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -3140,7 +3170,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v0.7.0</span>
+            <span class="settings-version-tag">v0.7.5</span>
           </div>
             </div>
           </div>
@@ -3179,7 +3209,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
       <div class="right-panel-artwork-box" id="right-panel-artwork-box">
         <div class="cover-container" id="cover-container">
-          <img alt="" class="right-panel-cover" id="right-panel-cover">
+          <img alt="" class="right-panel-cover" id="right-panel-cover" decoding="async">
           <div class="right-panel-cover-fallback" id="right-panel-fallback">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
           </div>
@@ -3221,7 +3251,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
     <div class="playbar-left">
       <div class="artwork-wrapper" id="playbar-artwork-wrapper">
         <div class="m3c-wrap" id="m3c-wrap">
-          <img alt="" class="track-artwork" id="playbar-artwork" style="display: none;">
+          <img alt="" class="track-artwork" id="playbar-artwork" decoding="async" style="display: none;">
           <canvas class="m3c-canvas" id="m3c-canvas"></canvas>
         </div>
         <div class="artwork-fallback" id="artwork-fallback">
@@ -3264,7 +3294,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
             </svg>
             <span class="play-loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             <svg id="pause-icon" class="hidden" style="display:none;" width="0" height="0"></svg>
-            <svg id="playbar-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="30" height="30"><path fill="currentColor"/></svg>
+            <svg id="playbar-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="30" height="30"><path fill="currentColor" d="M-148.0,-0.0L-142.9,-10.0L-138.6,-19.5L-136.1,-28.9L-135.0,-38.7L-135.3,-49.2L-135.0,-60.1L-132.9,-70.7L-129.1,-80.7L-123.7,-89.9L-116.8,-98.0L-108.6,-104.9L-99.4,-110.3L-89.2,-114.2L-78.5,-116.4L-68.6,-118.8L-59.7,-122.4L-51.5,-127.4L-43.5,-134.0L-35.1,-140.7L-25.7,-145.9L-15.7,-149.4L-5.3,-151.1L5.3,-151.1L15.7,-149.4L25.7,-145.9L35.1,-140.7L43.5,-134.0L51.5,-127.4L59.7,-122.4L68.6,-118.8L78.5,-116.4L89.2,-114.2L99.4,-110.3L108.6,-104.9L116.8,-98.0L123.7,-89.9L129.1,-80.7L132.9,-70.7L135.0,-60.1L135.3,-49.2L135.0,-38.7L136.1,-28.9L138.6,-19.5L142.9,-10.0L148.0,0.0L151.6,10.6L153.1,21.5L152.8,32.5L150.6,43.2L146.6,53.4L140.9,62.8L133.6,71.1L124.9,78.1L116.5,84.6L109.6,92.0L103.9,100.4L99.3,110.3L94.2,120.6L87.6,129.8L79.4,137.6L70.1,143.7L59.9,148.2L49.0,150.7L37.7,151.3L26.4,149.8L15.4,146.9L5.1,145.2L-5.1,145.2L-15.4,146.9L-26.4,149.8L-37.7,151.3L-49.0,150.7L-59.9,148.2L-70.1,143.7L-79.4,137.6L-87.6,129.8L-94.2,120.6L-99.3,110.3L-103.9,100.4L-109.6,92.0L-116.5,84.6L-124.9,78.1L-133.6,71.1L-140.9,62.8L-146.6,53.4L-150.6,43.2L-152.8,32.5L-153.1,21.5L-151.6,10.6Z"/></svg>
           </button>
         </div>
         <button class="control-btn" id="btn-next" title="Next">
@@ -4487,7 +4517,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
     <div class="ota-update-sheet" id="update-sheet-card">
       <div class="ota-update-time" id="update-release-time">Just now</div>
       <div class="ota-update-top-row">
-        <span class="ota-update-version" id="update-version-badge">v0.7.0</span>
+        <span class="ota-update-version" id="update-version-badge">v0.7.5</span>
         <div class="ota-update-actions">
           <button class="ota-btn-update" id="btn-update-now" type="button" data-i18n>Update</button>
           <button class="ota-btn-ignore" id="btn-update-later" type="button" data-i18n>Ignore</button>
@@ -4679,18 +4709,18 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
         <div class="tvk-row">
           <span class="tvk-label" data-i18n>Visualizer style</span>
           <select class="pill-select" id="tvk-viz-style-dropdown" style="display:none">
-            <option value="bars">Bars (Default)</option>
-            <option value="wave">Wave</option>
+            <option value="bars" data-i18n>Bars (Default)</option>
+            <option value="wave" data-i18n>Wave</option>
             <option value="swift">Swift</option>
           </select>
           <div class="m3-dropdown" id="tvk-viz-style-m3-dropdown">
             <button class="m3-dropdown-trigger" id="tvk-viz-style-m3-trigger" type="button">
-              <span class="m3-dropdown-label" id="tvk-viz-style-m3-label">Bars (Default)</span>
+              <span class="m3-dropdown-label" id="tvk-viz-style-m3-label" data-i18n>Bars (Default)</span>
               <svg class="m3-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
             <div class="m3-dropdown-menu" id="tvk-viz-style-m3-menu">
-              <button class="m3-dropdown-option selected" data-value="bars" type="button">Bars (Default)</button>
-              <button class="m3-dropdown-option" data-value="wave" type="button">Wave</button>
+              <button class="m3-dropdown-option selected" data-value="bars" type="button" data-i18n>Bars (Default)</button>
+              <button class="m3-dropdown-option" data-value="wave" type="button" data-i18n>Wave</button>
               <button class="m3-dropdown-option" data-value="swift" type="button">Swift</button>
             </div>
           </div>
@@ -4755,7 +4785,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </svg>
               <span class="play-loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
               <svg id="tvk-pause-icon" class="pause-icon hidden" style="display:none;" width="0" height="0"></svg>
-              <svg id="tvk-play-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="36" height="36"><path fill="#ffffff"/></svg>
+              <svg id="tvk-play-spinner" class="play-spinner hidden m3-btn-shape-spinner" viewBox="-180 -180 360 360" width="36" height="36"><path fill="#ffffff" d="M-148.0,-0.0L-142.9,-10.0L-138.6,-19.5L-136.1,-28.9L-135.0,-38.7L-135.3,-49.2L-135.0,-60.1L-132.9,-70.7L-129.1,-80.7L-123.7,-89.9L-116.8,-98.0L-108.6,-104.9L-99.4,-110.3L-89.2,-114.2L-78.5,-116.4L-68.6,-118.8L-59.7,-122.4L-51.5,-127.4L-43.5,-134.0L-35.1,-140.7L-25.7,-145.9L-15.7,-149.4L-5.3,-151.1L5.3,-151.1L15.7,-149.4L25.7,-145.9L35.1,-140.7L43.5,-134.0L51.5,-127.4L59.7,-122.4L68.6,-118.8L78.5,-116.4L89.2,-114.2L99.4,-110.3L108.6,-104.9L116.8,-98.0L123.7,-89.9L129.1,-80.7L132.9,-70.7L135.0,-60.1L135.3,-49.2L135.0,-38.7L136.1,-28.9L138.6,-19.5L142.9,-10.0L148.0,0.0L151.6,10.6L153.1,21.5L152.8,32.5L150.6,43.2L146.6,53.4L140.9,62.8L133.6,71.1L124.9,78.1L116.5,84.6L109.6,92.0L103.9,100.4L99.3,110.3L94.2,120.6L87.6,129.8L79.4,137.6L70.1,143.7L59.9,148.2L49.0,150.7L37.7,151.3L26.4,149.8L15.4,146.9L5.1,145.2L-5.1,145.2L-15.4,146.9L-26.4,149.8L-37.7,151.3L-49.0,150.7L-59.9,148.2L-70.1,143.7L-79.4,137.6L-87.6,129.8L-94.2,120.6L-99.3,110.3L-103.9,100.4L-109.6,92.0L-116.5,84.6L-124.9,78.1L-133.6,71.1L-140.9,62.8L-146.6,53.4L-150.6,43.2L-152.8,32.5L-153.1,21.5L-151.6,10.6Z"/></svg>
             </button>
           </div>
           <button class="control-btn" id="btn-tvk-next" title="Next" aria-label="Next">

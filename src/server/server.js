@@ -285,6 +285,46 @@ try {
   trackMetadataIndex = {};
 }
 
+function getMetaCacheId(artist, title) {
+  const key = getTrackNormalizedKey(artist, title);
+  if (!key || key === '::') return '';
+  return 'trk_' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 12);
+}
+
+function saveTrackSource(artist, title, sourceData) {
+  const key = getTrackNormalizedKey(artist, title);
+  if (!key || key === '::' || !sourceData) return;
+  if (!trackMetadataIndex.__sources || typeof trackMetadataIndex.__sources !== 'object') {
+    trackMetadataIndex.__sources = {};
+  }
+  trackMetadataIndex.__sources[key] = {
+    ...(trackMetadataIndex.__sources[key] || {}),
+    ...sourceData,
+    updatedAt: Date.now()
+  };
+  try {
+    fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8');
+  } catch (_) {}
+}
+
+function getSavedTrackSource(artist, title) {
+  const key = getTrackNormalizedKey(artist, title);
+  if (!key || key === '::') return null;
+  if (!trackMetadataIndex.__sources || typeof trackMetadataIndex.__sources !== 'object') return null;
+  return trackMetadataIndex.__sources[key] || null;
+}
+
+function deleteSavedTrackSource(artist, title) {
+  const key = getTrackNormalizedKey(artist, title);
+  if (!key || key === '::') return;
+  if (trackMetadataIndex.__sources && trackMetadataIndex.__sources[key]) {
+    delete trackMetadataIndex.__sources[key];
+    try {
+      fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8');
+    } catch (_) {}
+  }
+}
+
 function saveTrackMetadata(cleanId, meta) {
   if (!cleanId) return;
   trackMetadataIndex[cleanId] = {
@@ -427,17 +467,36 @@ function findCachedFileByMeta(title, artist) {
     trackMetadataIndex = {};
   }
   if (!title) return null;
+  const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
+  const metaCacheId = getMetaCacheId(artist, title);
+  if (metaCacheId) {
+    for (const ext of extensions) {
+      const fp = path.join(CACHE_DIR, `${metaCacheId}${ext}`);
+      try {
+        if (fs.existsSync(fp) && fs.statSync(fp).size > 60000) return fp;
+      } catch (_) {}
+    }
+  }
+  const savedSrc = getSavedTrackSource(artist, title);
+  if (savedSrc && savedSrc.resolvedId) {
+    const cleanSaved = cleanTrackId(savedSrc.resolvedId);
+    for (const ext of extensions) {
+      const fp = path.join(CACHE_DIR, `${cleanSaved}${ext}`);
+      try {
+        if (fs.existsSync(fp) && fs.statSync(fp).size > 60000) return fp;
+      } catch (_) {}
+    }
+  }
   const targetTitle = title.toLowerCase().trim();
   const targetArtist = (artist || '').toLowerCase().trim();
   const targetKey = getTrackNormalizedKey(artist, title);
   for (const [cid, meta] of Object.entries(trackMetadataIndex)) {
-    if (!meta) continue;
+    if (cid === '__sources' || !meta) continue;
     const metaTitle = (meta.title || '').toLowerCase().trim();
     const metaArtist = (meta.artist || '').toLowerCase().trim();
     const directMatch = metaTitle === targetTitle && (!artist || !meta.artist || metaArtist === targetArtist || metaArtist.includes(targetArtist));
     const keyMatch = Boolean(targetKey && getTrackNormalizedKey(meta.artist, meta.title) === targetKey);
     if (directMatch || keyMatch) {
-      const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
       for (const ext of extensions) {
         const fp = path.join(CACHE_DIR, `${cid}${ext}`);
         if (fs.existsSync(fp)) return fp;
@@ -2419,7 +2478,8 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
 }
 
 async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondaryCleanId, platform, meta = {}) {
-  const ids = Array.from(new Set([cleanTrackId(primaryCleanId), cleanTrackId(secondaryCleanId)].filter(Boolean)));
+  const metaCacheId = getMetaCacheId(meta.artist, meta.title);
+  const ids = Array.from(new Set([cleanTrackId(primaryCleanId), cleanTrackId(secondaryCleanId), metaCacheId].filter(Boolean)));
   if (!ids.length || !rawStreamUrl || rawStreamUrl.includes('.m3u8')) return;
   const mainId = ids[0];
   if (downloadingSet.has(mainId) || await findCachedFile(mainId)) return;
@@ -2534,15 +2594,25 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
               const ext = path.extname(tempFile);
               const outputPath = path.join(CACHE_DIR, `${cleanId}${ext}`);
               await fs.promises.rename(tempFile, outputPath);
-              saveTrackMetadata(cleanId, {
-                id: trackId,
-                title: meta.title || '',
-                artist: meta.artist || '',
-                duration: meta.duration || 0,
-                thumbnail: meta.thumbnail || '',
-                platform: platform || 'youtube',
-                fileSize: stat.size
-              });
+              const metaCacheId = getMetaCacheId(meta.artist, meta.title);
+              const allIds = Array.from(new Set([cleanId, metaCacheId].filter(Boolean)));
+              for (const aliasId of allIds) {
+                if (aliasId !== cleanId) {
+                  const aliasPath = path.join(CACHE_DIR, `${aliasId}${ext}`);
+                  if (!fs.existsSync(aliasPath)) {
+                    try { await fs.promises.copyFile(outputPath, aliasPath); } catch (_) {}
+                  }
+                }
+                saveTrackMetadata(aliasId, {
+                  id: trackId,
+                  title: meta.title || '',
+                  artist: meta.artist || '',
+                  duration: meta.duration || 0,
+                  thumbnail: meta.thumbnail || '',
+                  platform: platform || 'youtube',
+                  fileSize: stat.size
+                });
+              }
             } else {
               try { await fs.promises.unlink(tempFile); } catch (e) {}
             }
@@ -3208,7 +3278,9 @@ async function handleVibeRecommendations(req, res, payload) {
   };
 
   try {
-    const result = await recommendVibeTracks(historyTracks, favoriteTracks, platform, limit, clientProfile, extra);
+    const vibePromise = recommendVibeTracks(historyTracks, favoriteTracks, platform, limit, clientProfile, extra);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Vibe recommendation timeout')), 7000));
+    const result = await Promise.race([vibePromise, timeoutPromise]);
     if (result && Array.isArray(result.tracks)) {
       result.tracks.forEach(c => {
         if (c && (c.platform === 'youtube' || !c.platform)) {
@@ -3219,8 +3291,10 @@ async function handleVibeRecommendations(req, res, payload) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, ...result }));
   } catch (error) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: error.message }));
+    if (!res.writableEnded) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, tracks: [], error: error.message }));
+    }
   }
 }
 
@@ -3359,6 +3433,447 @@ async function checkNetConnectivity() {
   const googleOk = await tryReq('https://www.google.com/generate_204');
   if (googleOk) return true;
   return await tryReq('https://api.deezer.com/chart/0/tracks?limit=1');
+}
+
+const YT_PROFILE_CACHE_FILE = path.join(DATA_DIR, 'yt_profile.json');
+
+async function fetchYoutubeAccountProfileFromCookies() {
+  try {
+    if (!hasYtLoginCookies()) return null;
+    const origins = ['https://www.youtube.com', 'https://music.youtube.com'];
+    for (const origin of origins) {
+      const authHeaders = getYtAuthHeaders(origin);
+      if (!authHeaders) continue;
+      const clientName = origin.includes('music.') ? 'WEB_REMIX' : 'WEB';
+      const clientVersion = origin.includes('music.') ? '1.20250101.01.00' : '2.20250101.00.00';
+      const resp = await fetch(`${origin}/youtubei/v1/account/account_menu?prettyPrint=false`, {
+        method: 'POST',
+        headers: Object.assign({
+          'Content-Type': 'application/json',
+          'Referer': `${origin}/`,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        }, authHeaders),
+        body: JSON.stringify({
+          context: {
+            client: { clientName, clientVersion, hl: 'en', gl: 'US' }
+          }
+        }),
+        signal: AbortSignal.timeout(6000)
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      let header = null;
+      const walk = (node) => {
+        if (!node || typeof node !== 'object' || header) return;
+        if (node.activeAccountHeaderRenderer) {
+          header = node.activeAccountHeaderRenderer;
+          return;
+        }
+        for (const k of Object.keys(node)) walk(node[k]);
+      };
+      walk(data);
+      if (header) {
+        const name = header.accountName?.simpleText || (header.accountName?.runs && header.accountName.runs[0]?.text) || '';
+        const handle = (header.channelHandle?.runs && header.channelHandle.runs[0]?.text) || header.email?.simpleText || '';
+        const thumbs = header.accountPhoto?.thumbnails;
+        const avatar = Array.isArray(thumbs) && thumbs.length > 0 ? thumbs[thumbs.length - 1].url : '';
+        if (name || handle || avatar) {
+          const profile = { name, handle, avatar, avatarUrl: avatar };
+          try {
+            fs.writeFileSync(YT_PROFILE_CACHE_FILE, JSON.stringify(profile), 'utf8');
+          } catch (_) {}
+          return profile;
+        }
+      }
+    }
+  } catch (_) {}
+  try {
+    if (fs.existsSync(YT_PROFILE_CACHE_FILE)) {
+      const cached = JSON.parse(fs.readFileSync(YT_PROFILE_CACHE_FILE, 'utf8'));
+      if (cached && (cached.name || cached.handle || cached.avatar)) return cached;
+    }
+  } catch (_) {}
+  return null;
+}
+
+const serverCountryChartCache = new Map();
+
+function ytmBrowseRequest(reqBody, timeoutMs = 4500) {
+  const body = JSON.stringify(reqBody);
+  const headers = {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+    'Origin': 'https://music.youtube.com',
+    'Referer': 'https://music.youtube.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  };
+  if (serverActiveProxy && typeof global.riffSessionFetch === 'function') {
+    return global.riffSessionFetch('https://music.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(timeoutMs)
+    }).then(r => (r && r.ok ? r.json() : null)).catch(() => null);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      const req = https.request({
+        hostname: 'music.youtube.com',
+        path: '/youtubei/v1/browse?prettyPrint=false',
+        method: 'POST',
+        family: 4,
+        agent: keepAliveHttpsAgent,
+        timeout: timeoutMs,
+        headers
+      }, (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return done(null); }
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', c => { raw += c; });
+        res.on('end', () => { try { done(JSON.parse(raw)); } catch (_) { done(null); } });
+      });
+      req.setTimeout(timeoutMs, () => { req.destroy(); done(null); });
+      req.on('error', () => done(null));
+      req.write(body);
+      req.end();
+    } catch (_) {
+      done(null);
+    }
+  });
+}
+
+function parseYtmChartItems(json) {
+  const tracks = [];
+  const chartPlaylists = [];
+  const seenVid = new Set();
+  const seenPl = new Set();
+
+  const textOf = (node) => {
+    if (!node) return '';
+    if (typeof node === 'string') return node;
+    if (node.simpleText) return node.simpleText;
+    if (Array.isArray(node.runs)) return node.runs.map(r => (r && r.text) || '').join('');
+    return '';
+  };
+
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 25) return;
+    if (node.musicResponsiveListItemRenderer) {
+      const r = node.musicResponsiveListItemRenderer;
+      const cols = r.flexColumns || [];
+      const runsOf = (i) => (cols[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs) || [];
+      const overlay = r.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer;
+      const vid = r.playlistItemData?.videoId || overlay?.playNavigationEndpoint?.watchEndpoint?.videoId;
+      if (vid && /^[\w-]{11}$/.test(vid) && !seenVid.has(vid)) {
+        seenVid.add(vid);
+        const title = runsOf(0).map(x => x.text).join('').trim();
+        const segs = [];
+        let cur = [];
+        for (const run of runsOf(1)) {
+          if (run.text === ' • ') { segs.push(cur.join('').trim()); cur = []; }
+          else cur.push(run.text);
+        }
+        segs.push(cur.join('').trim());
+        const clean = segs.filter(s => s && !/^(song|video)$/i.test(s));
+        let duration = 0;
+        let viewsText = '';
+        for (const s of [...clean]) {
+          const d = parseYtmDuration(s);
+          if (d > 0) duration = d;
+          else if (/views|plays|просмотр|перегляд/i.test(s)) {
+            viewsText = s.replace(/\s*(views|plays|просмотров|переглядів).*/i, '').trim();
+          }
+        }
+        const artist = (clean[0] || '').replace(/\s*-\s*Topic$/i, '').trim();
+        const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+        let thumb = thumbs.length ? thumbs[thumbs.length - 1].url : `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+        thumb = thumb.replace(/=w\d+-h\d+[^&]*$/, '=w544-h544');
+        const isExplicit = Boolean(
+          r.badges && r.badges.some(b => b.musicInlineBadgeRenderer?.icon?.iconType === 'MUSIC_EXPLICIT_BADGE')
+        );
+        if (title) {
+          tracks.push({
+            id: vid,
+            title,
+            artist: artist || 'Unknown Artist',
+            duration: duration || 180,
+            thumbnail: thumb,
+            cover: thumb,
+            url: `https://www.youtube.com/watch?v=${vid}`,
+            platform: 'ytmusic',
+            listenersText: viewsText || '',
+            isExplicit
+          });
+        }
+      }
+    }
+    if (node.musicTwoRowItemRenderer) {
+      const t = node.musicTwoRowItemRenderer;
+      const bId = t.navigationEndpoint?.browseEndpoint?.browseId;
+      const pTitle = textOf(t.title).trim();
+      if (bId && /^(VL|PL|RDCLAK)/.test(bId) && !seenPl.has(bId)) {
+        seenPl.add(bId);
+        chartPlaylists.push({ browseId: bId.startsWith('VL') ? bId : `VL${bId}`, title: pTitle });
+      }
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+    } else {
+      for (const k of Object.keys(node)) walk(node[k], depth + 1);
+    }
+  };
+  walk(json, 0);
+  return { tracks, chartPlaylists };
+}
+
+async function fetchYtmCountryChart(country) {
+  const cc = String(country || 'us').toLowerCase();
+  const gl = cc === 'global' ? 'ZZ' : cc.toUpperCase();
+  const body = {
+    context: {
+      client: {
+        clientName: 'WEB_REMIX',
+        clientVersion: YTM_CLIENT_VERSION,
+        hl: 'en',
+        gl: gl === 'ZZ' ? 'US' : gl
+      }
+    },
+    browseId: 'FEmusic_charts',
+    formData: { selectedValues: [gl] }
+  };
+
+  const json = await ytmBrowseRequest(body, 8000);
+  if (!json) return [];
+
+  const parsed = parseYtmChartItems(json);
+  let tracks = parsed.tracks || [];
+
+  if (parsed.chartPlaylists.length > 0) {
+    const preferred = parsed.chartPlaylists.find(p => /top\s*(?:100\s*)?songs|top\s*songs/i.test(p.title))
+      || parsed.chartPlaylists.find(p => /trending/i.test(p.title))
+      || parsed.chartPlaylists[0];
+    if (preferred && preferred.browseId) {
+      const plJson = await ytmBrowseRequest({
+        context: body.context,
+        browseId: preferred.browseId
+      }, 8000);
+      if (plJson) {
+        const plParsed = parseYtmChartItems(plJson);
+        if (plParsed.tracks && plParsed.tracks.length > 0) {
+          tracks = [...plParsed.tracks, ...tracks];
+        }
+      }
+    }
+  }
+
+  return dedupeTrendingTracks(tracks);
+}
+
+const LASTFM_COUNTRY_NAMES = {
+  ua: 'Ukraine',
+  ru: 'Russian Federation',
+  us: 'United States',
+  gb: 'United Kingdom',
+  de: 'Germany',
+  fr: 'France',
+  pl: 'Poland',
+  kz: 'Kazakhstan',
+  jp: 'Japan',
+  kr: 'Korea, Republic of',
+  br: 'Brazil',
+  es: 'Spain',
+  it: 'Italy',
+  tr: 'Turkey'
+};
+
+async function resolveChartTrackPairs(pairs) {
+  const cleanPairs = (Array.isArray(pairs) ? pairs : []).slice(0, 28);
+  const resolved = await Promise.all(cleanPairs.map(async (p, i) => {
+    const q = `${p.artist} - ${p.title}`.trim();
+    const hits = await ytmusicSearch(q, { limit: 1, timeoutMs: 3200, maxRetries: 0, fallback: false }).catch(() => []);
+    const hit = hits && hits[0];
+    if (!hit || !hit.thumbnail) return null;
+    const est = Math.max(200000, 3400000 - i * 45000);
+    return {
+      id: hit.id,
+      title: p.title || hit.title,
+      artist: p.artist || hit.artist,
+      duration: hit.duration || 180,
+      thumbnail: hit.thumbnail,
+      cover: hit.thumbnail,
+      searchQuery: q,
+      url: hit.url || `https://www.youtube.com/watch?v=${hit.id}`,
+      platform: 'ytmusic',
+      listeners: est,
+      listenersText: formatListeners(est),
+      isExplicit: !!hit.isExplicit
+    };
+  }));
+  return dedupeTrendingTracks(resolved.filter(Boolean));
+}
+
+async function fetchKworbChart(chartPath) {
+  try {
+    const fetched = await fetchHtmlWithRedirects(`https://kworb.net${chartPath}`, 3, 4500).catch(() => null);
+    const html = fetched?.body || '';
+    if (!html) return [];
+    const matches = [
+      ...html.matchAll(/<td class="text mp"><div>([\s\S]*?)<\/div><\/td>/gi),
+      ...html.matchAll(/<td class="mp text"><div>([\s\S]*?)<\/div><\/td>/gi)
+    ];
+    const pairs = [];
+    for (const m of matches) {
+      const raw = decodeHtmlEntities(String(m[1] || '').replace(/<[^>]+>/g, '')).trim();
+      const idx = raw.indexOf(' - ');
+      if (idx <= 0) continue;
+      const artist = raw.slice(0, idx).trim();
+      const title = raw.slice(idx + 3).trim();
+      if (artist && title) pairs.push({ artist, title });
+      if (pairs.length >= 28) break;
+    }
+    if (!pairs.length) return [];
+    return await resolveChartTrackPairs(pairs);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function fetchLastFmCountryChart(country) {
+  const lfmCountry = LASTFM_COUNTRY_NAMES[country];
+  if (!lfmCountry) return [];
+  try {
+    const urlStr = `https://ws.audioscrobbler.com/2.0/?method=geo.gettoptracks&country=${encodeURIComponent(lfmCountry)}&api_key=${DEFAULT_LFM_KEY}&format=json&limit=28`;
+    const data = await httpGetJson(urlStr, 4000).catch(() => null);
+    const list = Array.isArray(data?.tracks?.track) ? data.tracks.track : [];
+    const pairs = list
+      .filter(t => t && t.name && t.artist?.name)
+      .map(t => ({ artist: String(t.artist.name).trim(), title: String(t.name).trim() }));
+    if (!pairs.length) return [];
+    return await resolveChartTrackPairs(pairs);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function fetchYandexRussiaChart() {
+  const tracks = [];
+  const pushYandexList = (items) => {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const rawT = it?.track || it?.data?.track || (it?.title ? it : null);
+      if (!rawT) continue;
+      const norm = normalizeYandexTrack(rawT);
+      if (!norm || !norm.title) continue;
+      const est = Math.max(200000, 3400000 - tracks.length * 45000);
+      tracks.push({
+        id: 'ym_' + (rawT.id || tracks.length),
+        title: norm.title,
+        artist: norm.artist || 'Unknown artist',
+        album: norm.album || '',
+        duration: norm.duration || 180,
+        thumbnail: norm.cover || norm.thumbnail || '',
+        cover: norm.cover || norm.thumbnail || '',
+        searchQuery: `${norm.artist || ''} - ${norm.title}`.trim(),
+        platform: 'ytmusic',
+        listeners: est,
+        listenersText: formatListeners(est)
+      });
+    }
+  };
+
+  try {
+    const [plData, chartData] = await Promise.all([
+      httpGetJson(`${YANDEX_API}/users/yamusic-top/playlists/1076`, 4000, YANDEX_HEADERS).catch(() => null),
+      httpGetJson(`${YANDEX_API}/landing3/chart`, 4000, YANDEX_HEADERS).catch(() => null)
+    ]);
+    if (Array.isArray(plData?.result?.tracks) && plData.result.tracks.length > 0) {
+      pushYandexList(plData.result.tracks);
+    } else if (Array.isArray(chartData?.result?.chart?.tracks) && chartData.result.chart.tracks.length > 0) {
+      pushYandexList(chartData.result.chart.tracks);
+    }
+    if (tracks.length >= 10) return dedupeTrendingTracks(tracks);
+  } catch (_) {}
+
+  const kwTracks = await fetchKworbChart('/charts/apple_s/ru.html').catch(() => []);
+  if (kwTracks && kwTracks.length >= 8) {
+    return kwTracks;
+  }
+
+  const lfmRu = await fetchLastFmCountryChart('ru').catch(() => []);
+  if (lfmRu && lfmRu.length > 0) {
+    return lfmRu;
+  }
+
+  return dedupeTrendingTracks(tracks);
+}
+
+async function handleTopChart(req, res) {
+  const parsedUrl = url.parse(req.url, true);
+  const country = String(parsedUrl.query.country || 'ua').toLowerCase().replace(/[^a-z]/g, '') || 'ua';
+  const cached = serverCountryChartCache.get(country);
+  if (cached && Array.isArray(cached.tracks) && cached.tracks.length > 0 && Date.now() - cached.ts < 30 * 60 * 1000) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, country, tracks: cached.tracks }));
+  }
+
+  const loadJob = async () => {
+    let tracks = [];
+    if (country === 'ru') {
+      tracks = await fetchYandexRussiaChart().catch(() => []);
+    } else if (country === 'global') {
+      tracks = await fetchYtmCountryChart('global').catch(() => []);
+      if (!tracks || tracks.length < 8) {
+        const dzTracks = await fetchDeezerChart(40).catch(() => []);
+        if (dzTracks && dzTracks.length > 0) tracks = dedupeTrendingTracks([...(tracks || []), ...dzTracks]);
+      }
+    } else {
+      const [ytmTracks, itTracks] = await Promise.all([
+        fetchYtmCountryChart(country).catch(() => []),
+        fetchItunesTopSongs(40, country).catch(() => [])
+      ]);
+      tracks = (ytmTracks && ytmTracks.length >= 8)
+        ? ytmTracks
+        : dedupeTrendingTracks([...(ytmTracks || []), ...(itTracks || [])]);
+      if (!tracks || tracks.length < 6) {
+        const lfmTracks = await fetchLastFmCountryChart(country).catch(() => []);
+        if (lfmTracks && lfmTracks.length > 0) {
+          tracks = dedupeTrendingTracks([...(tracks || []), ...lfmTracks]);
+        }
+      }
+    }
+    return tracks || [];
+  };
+
+  let tracks = await Promise.race([
+    loadJob(),
+    new Promise((resolve) => setTimeout(() => resolve([]), 9500))
+  ]);
+
+  if ((!tracks || tracks.length === 0) && country === 'global') {
+    tracks = await fetchDeezerChart(40).catch(() => []);
+  }
+
+  tracks = (tracks || []).slice(0, 50);
+  tracks.forEach((track, idx) => {
+    if (!track.listenersText) {
+      const listeners = getDeterministicListeners(track, idx, tracks.length);
+      track.listeners = listeners;
+      track.listenersText = formatListeners(listeners);
+    }
+    if (!track.cover && track.thumbnail) track.cover = track.thumbnail;
+    if (!track.thumbnail && track.cover) track.thumbnail = track.cover;
+    if (!track.platform) track.platform = 'ytmusic';
+  });
+
+  if (tracks.length > 0) {
+    serverCountryChartCache.set(country, { ts: Date.now(), tracks });
+    boundMap(serverCountryChartCache, 25);
+  }
+
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ success: true, country, tracks }));
 }
 
 async function handleTrending(req, res) {
@@ -3643,6 +4158,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   artist = stripYoutubeTopic(artist);
   trackUrl = normalizeSoundCloudUrl(trackUrl);
   const parsedUrl = (req && req.url) ? require('url').parse(req.url, true) : { query: {} };
+  const bust = Boolean(parsedUrl.query && parsedUrl.query.bust);
+  const blockedIds = String(parsedUrl.query?.blocked || '').split(',').map(s => s.trim()).filter(Boolean);
   const forShare = Boolean(parsedUrl.query && parsedUrl.query.forShare === '1');
   const forceYtDlp = Boolean(parsedUrl.query && parsedUrl.query.forceYtDlp === '1');
   const quality = (parsedUrl.query && parsedUrl.query.quality) || 'medium';
@@ -3672,17 +4189,17 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     trackMetadataIndex = {};
   }
 
-  let cachedFile = cleanId ? await findCachedFile(cleanId) : null;
-  if (!cachedFile && (title || artist)) {
+  let cachedFile = (!bust && cleanId) ? await findCachedFile(cleanId) : null;
+  if (!bust && !cachedFile && (title || artist)) {
     cachedFile = findCachedFileByMeta(title, artist);
   }
   if (forceYtDlp && cachedFile) {
     try { await fs.promises.unlink(cachedFile); } catch (_) {}
     cachedFile = null;
   }
-  const downloadedName = (title || artist) ? await findDownloadedFile(title, artist) : null;
+  const downloadedName = (!bust && (title || artist)) ? await findDownloadedFile(title, artist) : null;
 
-  if (!forShare && cachedFile) {
+  if (!bust && !forShare && cachedFile) {
     const cachedId = path.basename(cachedFile, path.extname(cachedFile));
     const data = {
       success: true,
@@ -3693,7 +4210,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
-  if (!forShare && downloadedName) {
+  if (!bust && !forShare && downloadedName) {
     const data = {
       success: true,
       isLocal: true,
@@ -3708,12 +4225,12 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   const cleanTitle = (title || '').toLowerCase().trim();
   const metaStreamKey = (cleanArtist && cleanTitle) ? `${cleanArtist}::${cleanTitle}_${quality}` : null;
   const cacheKey = (cleanId || trackUrl || queryQ || `${artist}_${title}`).toLowerCase() + '_' + quality;
-  if (forceYtDlp) {
+  if (forceYtDlp || bust) {
     if (cacheKey) streamUrlCache.delete(cacheKey);
     if (cleanId) streamUrlCache.delete(cleanId.toLowerCase() + '_' + quality);
     if (metaStreamKey) streamUrlCache.delete(metaStreamKey);
   }
-  if (!forShare && !forceYtDlp && (
+  if (!bust && !forShare && !forceYtDlp && (
     (cacheKey && streamUrlCache.has(cacheKey)) ||
     (cleanId && streamUrlCache.has(cleanId.toLowerCase() + '_' + quality)) ||
     (metaStreamKey && streamUrlCache.has(metaStreamKey))
@@ -3731,7 +4248,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
   }
 
-  if (!forceYtDlp && streamInfoInflight.has(cacheKey)) {
+  if (!bust && !forceYtDlp && streamInfoInflight.has(cacheKey)) {
     const inflightUrl = await streamInfoInflight.get(cacheKey).catch(() => null);
     if (inflightUrl) {
       const isHls = inflightUrl.includes('.m3u8');
@@ -3774,7 +4291,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const q = ((artist ? artist + ' - ' : '') + (title || '')).trim() || queryQ;
     const searchQ = makeCleanSearchQuery(artist, title) || q;
 
-    const sendStreamResponse = (resolvedStreamUrl, resolvedId = null) => {
+    const sendStreamResponse = (resolvedStreamUrl, resolvedId = null, sourceMetaObj = null) => {
       if (res.writableEnded) return;
       if (!resolvedStreamUrl) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -3797,21 +4314,34 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         streamUrl: isHls ? resolvedStreamUrl : proxied,
         rawStreamUrl: resolvedStreamUrl,
         proxyUrl: proxied,
-        isHls: isHls
+        isHls: isHls,
+        sourceMeta: sourceMetaObj || null
       };
       if (resolvedId) data.resolvedId = resolvedId;
+      if (artist && title) {
+        saveTrackSource(artist, title, {
+          resolvedId: finalId || '',
+          url: sourceMetaObj?.url || (finalId && /^[a-zA-Z0-9_-]{11}$/.test(finalId) ? `https://www.youtube.com/watch?v=${finalId}` : (trackUrl || '')),
+          platform: sourceMetaObj?.platform || platform || 'ytmusic',
+          sourceMeta: sourceMetaObj || data.sourceMeta || null
+        });
+      }
       if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
       if (finalId) streamUrlCache.set(finalId.toLowerCase() + '_' + quality, { timestamp: Date.now(), data });
       if (cleanId) streamUrlCache.set(cleanId.toLowerCase() + '_' + quality, { timestamp: Date.now(), data });
       if (metaStreamKey) streamUrlCache.set(metaStreamKey, { timestamp: Date.now(), data });
       if (!forShare && resolvedStreamUrl) {
+        const dlTargetUrl = (resolvedId && /^[a-zA-Z0-9_-]{11}$/.test(resolvedId))
+          ? ('https://www.youtube.com/watch?v=' + resolvedId)
+          : (sourceMetaObj?.url || trackUrl || '');
+        const metaId = getMetaCacheId(artist, title);
         setTimeout(() => {
           if (!resolvedStreamUrl.includes('.m3u8')) {
-            cacheResolvedStreamToDisk(resolvedStreamUrl, cleanId, resolvedId || cleanId, platform, meta).catch(() => {});
-          } else {
-            downloadTrackToDisk(resolvedId ? ('https://www.youtube.com/watch?v=' + resolvedId) : trackUrl, resolvedId || cleanId, platform, meta).catch(() => {});
+            cacheResolvedStreamToDisk(resolvedStreamUrl, cleanId || metaId, resolvedId || metaId || cleanId, platform, meta).catch(() => {});
+          } else if (dlTargetUrl && dlTargetUrl.startsWith('http')) {
+            downloadTrackToDisk(dlTargetUrl, resolvedId || metaId || cleanId, sourceMetaObj?.platform || platform, meta).catch(() => {});
           }
-        }, 2000);
+        }, 1200);
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(data));
@@ -3895,7 +4425,23 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       return s;
     };
 
-    const failedYtIds = new Set();
+    const failedYtIds = new Set(blockedIds);
+
+    if (!bust && !forceYtDlp && artist && title) {
+      const savedSrc = getSavedTrackSource(artist, title);
+      if (savedSrc) {
+        const savedId = String(savedSrc.resolvedId || '').trim();
+        const savedUrl = String(savedSrc.url || '').trim();
+        if (savedSrc.platform === 'soundcloud' && savedUrl && !failedYtIds.has(savedId) && !failedYtIds.has(savedUrl)) {
+          const scStream = await resolveScCandidateStream(savedUrl, savedId);
+          if (scStream) return sendStreamResponse(scStream, savedId || cleanId, savedSrc.sourceMeta || null);
+        } else if (extractYtIdFromAny(savedId) && !failedYtIds.has(savedId)) {
+          const ytStream = await resolveYtCandidateStream(savedId);
+          if (ytStream) return sendStreamResponse(ytStream, savedId, savedSrc.sourceMeta || null);
+          failedYtIds.add(savedId);
+        }
+      }
+    }
 
     if (platform === 'soundcloud' || isSc) {
       streamUrl = await resolveScCandidateStream(trackUrl, cleanId);
@@ -3904,13 +4450,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         try {
           const ytHits = await ytmusicSearch(searchQ, { limit: 1, timeoutMs: 3000 }).catch(() => []);
           const hitId = ytHits && ytHits[0] && ytHits[0].id;
-          if (hitId) {
+          if (hitId && !failedYtIds.has(hitId)) {
             const fallbackStream = await fetchDirectYoutubeStreamServer(hitId, quality).catch(() => null);
-            if (fallbackStream) return sendStreamResponse(fallbackStream, hitId);
+            if (fallbackStream) {
+              const smObj = { id: hitId, title: ytHits[0].title || title, artist: ytHits[0].artist || artist, thumbnail: ytHits[0].thumbnail || thumbnail, url: ytHits[0].url || '', platform: 'ytmusic' };
+              return sendStreamResponse(fallbackStream, hitId, smObj);
+            }
           }
         } catch (_) {}
       }
-    } else if (isRealYtId && cleanId) {
+    } else if (isRealYtId && cleanId && !failedYtIds.has(cleanId)) {
       streamUrl = await resolveYtCandidateStream(cleanId);
       if (streamUrl) return sendStreamResponse(streamUrl, cleanId);
       failedYtIds.add(cleanId);
@@ -3943,12 +4492,19 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         for (const { cand } of rankedCandidates) {
           try {
             const fastUrl = await fetchDirectYoutubeStreamServer(cand.id, quality);
-            if (fastUrl) return { url: fastUrl, id: cand.id };
+            if (fastUrl) {
+              const sourceMetaObj = { id: cand.id, title: cand.title, artist: cand.artist, thumbnail: cand.thumbnail, url: cand.url, platform: cand.platform || 'ytmusic' };
+              return { url: fastUrl, id: cand.id, sourceMeta: sourceMetaObj };
+            }
           } catch (_) {}
         }
         try {
           const topResolvedUrl = await resolveYtCandidateStream(rankedCandidates[0].cand.id);
-          if (topResolvedUrl) return { url: topResolvedUrl, id: rankedCandidates[0].cand.id };
+          if (topResolvedUrl) {
+            const cand = rankedCandidates[0].cand;
+            const sourceMetaObj = { id: cand.id, title: cand.title, artist: cand.artist, thumbnail: cand.thumbnail, url: cand.url, platform: cand.platform || 'ytmusic' };
+            return { url: topResolvedUrl, id: cand.id, sourceMeta: sourceMetaObj };
+          }
         } catch (_) {}
         throw new Error('no yt match');
       })();
@@ -3964,7 +4520,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
           } catch (_) {}
         }
       }
-      if (bestMatch) return sendStreamResponse(bestMatch.url, bestMatch.id);
+      if (bestMatch) return sendStreamResponse(bestMatch.url, bestMatch.id, bestMatch.sourceMeta || null);
 
       if (!streamUrl) {
         try {
@@ -4121,23 +4677,48 @@ async function fetchItunesArtistAlbums(artistName) {
 
 const geniusArtCache = new Map();
 
-async function fetchGeniusArtistArt(artistName) {
+async function fetchGeniusArtistArt(artistName, hintTrack = '') {
   const clean = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
   if (!clean) return null;
+  const cleanHint = (hintTrack || '').trim();
 
-  const cacheKey = clean.toLowerCase();
+  const cacheKey = (clean + '::' + cleanHint).toLowerCase();
   if (geniusArtCache.has(cacheKey)) return geniusArtCache.get(cacheKey);
 
   try {
-    const data = await httpGetJson(`https://genius.com/api/search/multi?q=${encodeURIComponent(clean)}`, 5000, {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    });
-    const sections = data?.response?.sections || [];
+    const nc = normalizeArtistName(clean);
     let artistObj = null;
 
-    const nc = normalizeArtistName(clean);
+    if (cleanHint) {
+      const hintData = await httpGetJson(`https://genius.com/api/search/multi?q=${encodeURIComponent(clean + ' ' + cleanHint)}`, 5000, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      });
+      const hintSections = hintData?.response?.sections || [];
+      const normHint = cleanTitleForMatching(cleanHint);
+      for (const sType of ['top_hit', 'song']) {
+        const sec = hintSections.find(s => s && s.type === sType);
+        if (sec && Array.isArray(sec.hits)) {
+          for (const h of sec.hits) {
+            const res = h?.result;
+            const pa = res?.primary_artist;
+            const cTit = cleanTitleForMatching(res?.title || res?.name || '');
+            if (pa && pa.name && normalizeArtistName(pa.name) === nc && cTit && normHint && (cTit === normHint || cTit.includes(normHint) || normHint.includes(cTit))) {
+              artistObj = pa;
+              break;
+            }
+          }
+        }
+        if (artistObj) break;
+      }
+    }
+
+    const data = !artistObj ? await httpGetJson(`https://genius.com/api/search/multi?q=${encodeURIComponent(clean)}`, 5000, {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }) : null;
+    const sections = data?.response?.sections || [];
+
     const artistSection = sections.find(s => s && s.type === 'artist');
-    if (artistSection && Array.isArray(artistSection.hits) && artistSection.hits.length > 0) {
+    if (!artistObj && artistSection && Array.isArray(artistSection.hits) && artistSection.hits.length > 0) {
       const match = artistSection.hits.find(h => {
         const na = normalizeArtistName(h.result?.name);
         return na && nc && na === nc;
@@ -4252,6 +4833,69 @@ async function fetchMusicBio(artistName, geniusArtistId = null) {
   return '';
 }
 
+async function fetchGeniusArtistAlbums(artistName, geniusArtistId = null) {
+  if (!artistName) return [];
+  const clean = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
+  if (!clean) return [];
+  const targetNorm = normalizeArtistName(clean);
+  const out = [];
+  const seenTitles = new Set();
+
+  let gId = geniusArtistId;
+  if (!gId) {
+    try {
+      const gArt = await fetchGeniusArtistArt(clean);
+      if (gArt && gArt.id) gId = gArt.id;
+    } catch (_) {}
+  }
+
+  const addGeniusAlbum = (alb) => {
+    if (!alb || !alb.name || !alb.id) return;
+    const albArtist = alb.artist?.name || clean;
+    if (alb.artist?.name && normalizeArtistName(alb.artist.name) !== targetNorm && !normalizeArtistName(alb.artist.name).includes(targetNorm)) {
+      return;
+    }
+    const normTitle = cleanTitleForMatching(alb.name);
+    if (!normTitle || seenTitles.has(normTitle)) return;
+    seenTitles.add(normTitle);
+    const isDef = u => !u || /default_avatar|default_cover|assets\.genius\.com/i.test(u);
+    const cover = !isDef(alb.cover_art_url) ? alb.cover_art_url : (!isDef(alb.cover_art_thumbnail_url) ? alb.cover_art_thumbnail_url : '');
+    const year = alb.release_date_components?.year ? String(alb.release_date_components.year) : (alb.release_date_for_display ? String(alb.release_date_for_display).slice(-4) : '');
+    out.push({
+      id: `gn_alb_${alb.id}`,
+      title: alb.name,
+      artist: albArtist,
+      cover,
+      year: /^\d{4}$/.test(year) ? year : '',
+      trackCount: 0,
+      recordType: 'album',
+      source: 'genius'
+    });
+  };
+
+  if (gId) {
+    try {
+      const gAlbData = await httpGetJson(`https://genius.com/api/artists/${gId}/albums?per_page=50`, 5000, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      });
+      const list = gAlbData?.response?.albums || [];
+      for (const a of list) addGeniusAlbum(a);
+    } catch (_) {}
+  }
+
+  try {
+    const searchData = await httpGetJson(`https://genius.com/api/search/album?q=${encodeURIComponent(clean)}`, 5000, {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    });
+    const hits = searchData?.response?.sections?.[0]?.hits || searchData?.response?.hits || [];
+    for (const h of hits) {
+      if (h?.result) addGeniusAlbum(h.result);
+    }
+  } catch (_) {}
+
+  return out;
+}
+
 async function fetchArchivedAlbums(artistName) {
   if (!artistName) return [];
   const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
@@ -4360,6 +5004,31 @@ async function fetchArchivedAlbums(artistName) {
   return archived;
 }
 
+async function fetchLastFmArtistPhotos(artistName) {
+  const clean = (artistName || '').trim();
+  if (!clean) return [];
+  try {
+    const artistSlug = encodeURIComponent(clean).replace(/%20/g, '+');
+    const fetched = await fetchHtmlWithRedirects(`https://www.last.fm/music/${artistSlug}/+images`, 4, 6000);
+    const html = (fetched && fetched.body) ? fetched.body : '';
+    if (!html) return [];
+    const urls = [];
+    const seenHashes = new Set();
+    const re = /(?:lastfm\.freetls\.fastly\.net\/i\/u\/(?:avatar170s|300x300|ar0|770x0|300x300)\/|\/\+images\/)([a-f0-9]{32})/gi;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const hash = m[1].toLowerCase();
+      if (!hash || hash === '2a96cbd8b46e442fc41c2b86b821562f' || seenHashes.has(hash)) continue;
+      seenHashes.add(hash);
+      urls.push(`https://lastfm.freetls.fastly.net/i/u/770x0/${hash}.jpg`);
+      if (urls.length >= 8) break;
+    }
+    return urls;
+  } catch (_) {
+    return [];
+  }
+}
+
 async function fetchArtistInfo(artistName, hintTrack = '') {
   const cleanName = (artistName || '').replace(/ - Topic|VEVO/gi, '').trim();
   if (!cleanName) {
@@ -4387,7 +5056,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     }
     return true;
   };
-  const cacheKey = (cleanName + '::' + (hintTrack || '')).toLowerCase();
+  const cacheKey = 'v4::' + (cleanName + '::' + (hintTrack || '')).toLowerCase();
   if (artistCache.has(cacheKey)) return artistCache.get(cacheKey);
 
   let bio = '';
@@ -4401,7 +5070,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
   let albums = [];
   let resolvedName = cleanName;
 
-  const geniusArt = await fetchGeniusArtistArt(cleanName).catch(() => null);
+  const geniusArt = await fetchGeniusArtistArt(cleanName, hintTrack).catch(() => null);
   if (geniusArt && geniusArt.banner) {
     banner = geniusArt.banner;
   }
@@ -4411,53 +5080,61 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
 
   let artistMatch = null;
   try {
-    const dzSearchUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(cleanName)}&limit=10`;
-    const dzRes = await new Promise((resolve) => {
-      https.get(dzSearchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4500 }, (dRes) => {
-        let d = '';
-        dRes.on('data', c => d += c);
-        dRes.on('end', () => {
-          try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
-        });
-      }).on('error', () => resolve(null));
-    });
-
-    const candidates = (dzRes && Array.isArray(dzRes.data)) ? dzRes.data : [];
-    let matchingCandidates = candidates.filter(c => c && norm(c.name) === normClean);
-    if (!matchingCandidates.length) {
-      matchingCandidates = candidates.filter(c => c && normTranslit(c.name) === normTranslit(cleanName));
-    }
-
-    if (matchingCandidates.length === 1) {
-      artistMatch = matchingCandidates[0];
-    } else if (matchingCandidates.length > 1) {
-      if (hintTrack) {
-        const cleanHint = cleanTitleForMatching(hintTrack);
-        for (const cand of matchingCandidates) {
-          try {
-            const candTop = await new Promise((resolve) => {
-              https.get(`https://api.deezer.com/artist/${cand.id}/top?limit=25`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (tRes) => {
-                let d = '';
-                tRes.on('data', c => d += c);
-                tRes.on('end', () => {
-                  try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
-                });
-              }).on('error', () => resolve(null));
-            });
-            const topList = (candTop && Array.isArray(candTop.data)) ? candTop.data : [];
-            const hasMatch = topList.some(t => {
-              const cTit = cleanTitleForMatching(t.title);
-              return cTit && cleanHint && (cTit.includes(cleanHint) || cleanHint.includes(cTit));
-            });
-            if (hasMatch) {
-              artistMatch = cand;
-              break;
-            }
-          } catch (_) {}
+    if (hintTrack) {
+      const cleanHint = cleanTitleForMatching(hintTrack);
+      if (cleanHint) {
+        const dzTrackRes = await httpGetJson(`https://api.deezer.com/search?q=${encodeURIComponent(cleanName + ' ' + hintTrack)}&limit=15`, 4500).catch(() => null);
+        const dzTracks = (dzTrackRes && Array.isArray(dzTrackRes.data)) ? dzTrackRes.data : [];
+        for (const item of dzTracks) {
+          const cTit = cleanTitleForMatching(item?.title_short || item?.title || '');
+          const artName = item?.artist?.name || '';
+          if (item?.artist?.id && cTit && (cTit === cleanHint || cTit.includes(cleanHint) || cleanHint.includes(cTit)) && (norm(artName) === normClean || normTranslit(artName) === normTranslit(cleanName))) {
+            const fullArtist = await httpGetJson(`https://api.deezer.com/artist/${item.artist.id}`, 4000).catch(() => null);
+            artistMatch = (fullArtist && fullArtist.id) ? fullArtist : item.artist;
+            break;
+          }
         }
       }
-      if (!artistMatch) {
-        artistMatch = matchingCandidates[0];
+    }
+
+    if (!artistMatch) {
+      const dzSearchUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(cleanName)}&limit=25`;
+      const dzRes = await new Promise((resolve) => {
+        https.get(dzSearchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4500 }, (dRes) => {
+          let d = '';
+          dRes.on('data', c => d += c);
+          dRes.on('end', () => {
+            try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
+          });
+        }).on('error', () => resolve(null));
+      });
+
+      const candidates = (dzRes && Array.isArray(dzRes.data)) ? dzRes.data : [];
+      let matchingCandidates = candidates.filter(c => c && norm(c.name) === normClean);
+      if (!matchingCandidates.length) {
+        matchingCandidates = candidates.filter(c => c && normTranslit(c.name) === normTranslit(cleanName));
+      }
+
+      if (matchingCandidates.length > 0) {
+        if (hintTrack) {
+          const cleanHint = cleanTitleForMatching(hintTrack);
+          for (const cand of matchingCandidates) {
+            try {
+              const candTop = await httpGetJson(`https://api.deezer.com/artist/${cand.id}/top?limit=25`, 4000).catch(() => null);
+              const topList = (candTop && Array.isArray(candTop.data)) ? candTop.data : [];
+              const hasMatch = topList.some(t => {
+                const cTit = cleanTitleForMatching(t.title);
+                return cTit && cleanHint && (cTit.includes(cleanHint) || cleanHint.includes(cTit));
+              });
+              if (hasMatch) {
+                artistMatch = cand;
+                break;
+              }
+            } catch (_) {}
+          }
+        } else {
+          artistMatch = matchingCandidates[0];
+        }
       }
     }
   } catch (_) {}
@@ -4471,15 +5148,26 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     isVerified = fansCount > 30000;
 
     try {
-      const topData = await new Promise((resolve) => {
-        https.get(`https://api.deezer.com/artist/${artistMatch.id}/top?limit=100`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 5000 }, (res) => {
-          let d = '';
-          res.on('data', c => d += c);
-          res.on('end', () => {
-            try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
-          });
-        }).on('error', () => resolve(null));
-      });
+      const [topData, albData] = await Promise.all([
+        new Promise((resolve) => {
+          https.get(`https://api.deezer.com/artist/${artistMatch.id}/top?limit=100`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4500 }, (res) => {
+            let d = '';
+            res.on('data', c => d += c);
+            res.on('end', () => {
+              try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
+            });
+          }).on('error', () => resolve(null));
+        }),
+        new Promise((resolve) => {
+          https.get(`https://api.deezer.com/artist/${artistMatch.id}/albums?limit=40`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4500 }, (res) => {
+            let d = '';
+            res.on('data', c => d += c);
+            res.on('end', () => {
+              try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
+            });
+          }).on('error', () => resolve(null));
+        })
+      ]);
 
       if (topData && Array.isArray(topData.data)) {
         const filtered = topData.data.filter(t => t && (t.artist?.id === artistMatch.id || (t.contributors || []).some(c => c && c.id === artistMatch.id)));
@@ -4502,15 +5190,6 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
         });
       }
 
-      const albData = await new Promise((resolve) => {
-        https.get(`https://api.deezer.com/artist/${artistMatch.id}/albums?limit=40`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4500 }, (res) => {
-          let d = '';
-          res.on('data', c => d += c);
-          res.on('end', () => {
-            try { resolve(JSON.parse(d)); } catch (_) { resolve(null); }
-          });
-        }).on('error', () => resolve(null));
-      });
       if (albData && Array.isArray(albData.data)) {
         const rawAlbums = albData.data.filter(a => a && a.title && (a.artist?.id === artistMatch.id || norm(a.artist?.name || artistMatch.name) === normClean));
         albums = [];
@@ -4593,6 +5272,152 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     }
   }
 
+  if (tracks.length < 5) {
+    const existingNormTitles = new Set(tracks.map(t => cleanTitleForMatching(t.title)));
+    const scTracks = await fetchSoundCloudSearch(cleanName, 35).catch(() => []);
+    let scRawCollection = [];
+    try {
+      const cid = await refreshSoundCloudClientId(false);
+      const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(cleanName)}&limit=35&client_id=${cid}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(4500)
+      });
+      if (sr.ok) {
+        const sj = await sr.json();
+        if (Array.isArray(sj?.collection)) scRawCollection = sj.collection;
+      }
+    } catch (_) {}
+
+    const findScMatch = (tTitle) => {
+      const normT = cleanTitleForMatching(tTitle);
+      if (!normT) return null;
+      const rawHit = scRawCollection.find(x => x && cleanTitleForMatching(x.title).includes(normT));
+      const cleanHit = (scTracks || []).find(x => x && cleanTitleForMatching(x.title).includes(normT));
+      return { rawHit, cleanHit };
+    };
+
+     
+    try {
+      const gSongsUrl = geniusArt?.id
+        ? `https://genius.com/api/artists/${geniusArt.id}/songs?sort=popularity&per_page=30`
+        : `https://genius.com/api/search/song?q=${encodeURIComponent(cleanName)}`;
+      const gData = await httpGetJson(gSongsUrl, 4500, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      });
+      const rawGSongs = geniusArt?.id
+        ? (gData?.response?.songs || [])
+        : ((gData?.response?.sections?.[0]?.hits || gData?.response?.hits || []).map(h => h?.result).filter(Boolean));
+      for (const s of rawGSongs) {
+        if (!s || !s.title) continue;
+        const primaryArtist = s.primary_artist?.name || s.artist_names || '';
+        if (!matchesTargetArtist(primaryArtist, s.title)) continue;
+        const cTitle = cleanTitleForMatching(s.title);
+        if (!cTitle || existingNormTitles.has(cTitle)) continue;
+        existingNormTitles.add(cTitle);
+        const isDefImg = u => !u || /default_avatar|default_cover|assets\.genius\.com/i.test(u);
+        const scMatch = findScMatch(s.title);
+        const scRaw = scMatch?.rawHit;
+        const scClean = scMatch?.cleanHit;
+        const scCover = scRaw?.artwork_url ? scRaw.artwork_url.replace('-large', '-t500x500') : (scClean?.thumbnail || '');
+        const cover = (!isDefImg(s.song_art_image_thumbnail_url) ? s.song_art_image_thumbnail_url : (!isDefImg(s.song_art_image_url) ? s.song_art_image_url : (scCover || avatar))) || '';
+        const scPlays = Number(scRaw?.playback_count) || 0;
+        const gnViews = Number(s.stats?.pageviews) || 0;
+        const bestPlays = Math.max(scPlays, gnViews);
+        const dur = scClean?.duration || (scRaw?.duration ? Math.round(scRaw.duration / 1000) : 160);
+        tracks.push({
+          id: scClean?.id ? String(scClean.id) : `gn_${s.id}`,
+          title: s.title,
+          artist: s.primary_artist?.name || resolvedName,
+          duration: dur,
+          durationMs: dur * 1000,
+          thumbnail: cover,
+          cover: cover,
+          playCount: bestPlays > 0 ? bestPlays : undefined,
+          playsText: bestPlays > 0 ? bestPlays.toLocaleString('en-US') : undefined,
+          url: scClean?.url || scRaw?.permalink_url || '',
+          searchQuery: `${s.primary_artist?.name || resolvedName} - ${s.title}`,
+          platform: 'soundcloud',
+          fromGenius: true,
+          isCached: false,
+          isExplicit: isTextExplicit(s.title)
+        });
+      }
+    } catch (_) {}
+
+     
+    for (const rawSc of scRawCollection) {
+      if (!rawSc || !rawSc.title) continue;
+      const scArtist = (rawSc.user && (rawSc.user.username || rawSc.user.name)) || '';
+      const parsed = parseSmartArtistAndTitle(rawSc.title, scArtist);
+      if (!matchesTargetArtist(parsed.artist, parsed.title) && !matchesTargetArtist(scArtist, rawSc.title)) continue;
+      const cTitle = cleanTitleForMatching(parsed.title);
+      if (!cTitle || existingNormTitles.has(cTitle)) continue;
+      existingNormTitles.add(cTitle);
+      const cover = rawSc.artwork_url ? rawSc.artwork_url.replace('-large', '-t500x500') : (avatar || '');
+      const plays = Number(rawSc.playback_count) || 0;
+      const dur = Math.round((rawSc.duration || 160000) / 1000);
+      tracks.push({
+        id: String(rawSc.id),
+        title: parsed.title,
+        artist: resolvedName,
+        duration: dur,
+        durationMs: dur * 1000,
+        thumbnail: cover,
+        cover: cover,
+        playCount: plays > 0 ? plays : undefined,
+        playsText: plays > 0 ? plays.toLocaleString('en-US') : undefined,
+        url: normalizeSoundCloudUrl(rawSc.permalink_url || ''),
+        searchQuery: `${resolvedName} - ${parsed.title}`,
+        platform: 'soundcloud',
+        isCached: false,
+        isExplicit: isTextExplicit(parsed.title)
+      });
+    }
+
+     
+    if (tracks.length < 10) {
+      try {
+        const lfmTopUrl = `https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist=${encodeURIComponent(cleanName)}&api_key=4cb074e4b8ec4ee9ad3eb37d6f7eb240&format=json&limit=25`;
+        const lfmTopData = await httpGetJson(lfmTopUrl, 4000);
+        const lfmList = lfmTopData?.toptracks?.track;
+        const arr = Array.isArray(lfmList) ? lfmList : (lfmList ? [lfmList] : []);
+        for (const item of arr) {
+          if (!item || !item.name) continue;
+          const artName = item.artist?.name || resolvedName;
+          if (!matchesTargetArtist(artName, item.name)) continue;
+          const cTitle = cleanTitleForMatching(item.name);
+          if (!cTitle || existingNormTitles.has(cTitle)) continue;
+          existingNormTitles.add(cTitle);
+          const scMatch = findScMatch(item.name);
+          const scRaw = scMatch?.rawHit;
+          const scClean = scMatch?.cleanHit;
+          const imgs = Array.isArray(item.image) ? item.image : [];
+          const rawImg = (imgs.find(x => x.size === 'extralarge') || imgs[imgs.length - 1])?.['#text'] || '';
+          const scCover = scRaw?.artwork_url ? scRaw.artwork_url.replace('-large', '-t500x500') : '';
+          const validImg = (rawImg && !rawImg.includes('2a96cbd8b46e442fc41c2b86b821562f')) ? rawImg : (scCover || avatar || '');
+          const playcount = Math.max(Number(scRaw?.playback_count) || 0, parseInt(item.playcount || '0', 10));
+          const dur = scClean?.duration || (Number(item.duration) > 0 ? Number(item.duration) : 180);
+          tracks.push({
+            id: scClean?.id ? String(scClean.id) : `lfm_${crypto.createHash('md5').update(artName + '::' + item.name).digest('hex').slice(0, 10)}`,
+            title: item.name,
+            artist: artName,
+            duration: dur,
+            durationMs: dur * 1000,
+            thumbnail: validImg,
+            cover: validImg,
+            playCount: playcount > 0 ? playcount : undefined,
+            playsText: playcount > 0 ? playcount.toLocaleString('en-US') : undefined,
+            url: scClean?.url || scRaw?.permalink_url || '',
+            searchQuery: `${artName} - ${item.name}`,
+            platform: 'soundcloud',
+            isCached: false,
+            isExplicit: isTextExplicit(item.name)
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
   if (geniusArt && geniusArt.banner) {
     banner = geniusArt.banner;
   }
@@ -4620,25 +5445,108 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
   }
 
   try {
-    const archivedAlbums = await fetchArchivedAlbums(resolvedName || cleanName);
-    if (archivedAlbums && archivedAlbums.length > 0) {
-      const existingTitles = new Set(albums.map(a => (a.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim()));
-      for (const arch of archivedAlbums) {
-        const normT = (arch.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
-        if (normT && !existingTitles.has(normT)) {
-          existingTitles.add(normT);
-          albums.push(arch);
-        }
+    const fetchDisambiguatedItunesAlbums = async () => {
+      if (!hintTrack) return [];
+      const cleanHint = cleanTitleForMatching(hintTrack);
+      const itSongData = await fetchItunesJson(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanName + ' ' + hintTrack)}&entity=song&limit=15`).catch(() => null);
+      const songResults = Array.isArray(itSongData?.results) ? itSongData.results : [];
+      const matchedSong = songResults.find(r => {
+        const cTit = cleanTitleForMatching(r?.trackName || '');
+        const cArt = r?.artistName || '';
+        return r?.artistId && cTit && cleanHint && (cTit === cleanHint || cTit.includes(cleanHint) || cleanHint.includes(cTit)) && (norm(cArt) === normClean || normTranslit(cArt) === normTranslit(cleanName));
+      });
+      if (!matchedSong || !matchedSong.artistId) return [];
+      const lookupData = await fetchItunesJson(`https://itunes.apple.com/lookup?id=${encodeURIComponent(matchedSong.artistId)}&entity=album&limit=40`).catch(() => null);
+      const colls = Array.isArray(lookupData?.results) ? lookupData.results : [];
+      return colls
+        .filter(c => c && c.wrapperType === 'collection' && c.collectionName && (c.trackCount || 0) >= 2 && !/\s-\s*Single$/i.test(c.collectionName))
+        .map(c => ({
+          id: String(c.collectionId),
+          title: c.collectionName,
+          artist: c.artistName || resolvedName,
+          cover: upgradeArtworkUrl(c.artworkUrl100 || ''),
+          year: c.releaseDate ? c.releaseDate.slice(0, 4) : '',
+          trackCount: c.trackCount || 0,
+          recordType: 'album',
+          source: 'itunes'
+        }));
+    };
+
+    const [geniusAlbums, extraAlbums, lfmTopData] = await Promise.all([
+      (!hintTrack || geniusArt?.id) ? fetchGeniusArtistAlbums(resolvedName || cleanName, geniusArt?.id).catch(() => []) : Promise.resolve([]),
+      hintTrack ? fetchDisambiguatedItunesAlbums().catch(() => []) : (albums.length === 0 ? fetchArchivedAlbums(resolvedName || cleanName).catch(() => []) : Promise.resolve([])),
+      httpGetJson(`https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist=${encodeURIComponent(cleanName)}&api_key=4cb074e4b8ec4ee9ad3eb37d6f7eb240&format=json&limit=50`, 4000).catch(() => null)
+    ]);
+
+    const existingTitles = new Set(albums.map(a => (a.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim()));
+    for (const galb of [...(extraAlbums || []), ...(geniusAlbums || [])]) {
+      const normT = (galb.title || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
+      if (normT && !existingTitles.has(normT)) {
+        existingTitles.add(normT);
+        albums.push(galb);
       }
     }
+
+    const lfmPlaysMap = new Map();
+    const lfmTrackList = lfmTopData?.toptracks?.track;
+    const lfmArr = Array.isArray(lfmTrackList) ? lfmTrackList : (lfmTrackList ? [lfmTrackList] : []);
+    for (const lt of lfmArr) {
+      if (lt && lt.name && lt.playcount) {
+        const ct = cleanTitleForMatching(lt.name);
+        const cnt = parseInt(lt.playcount, 10) || 0;
+        if (ct && cnt > 0) lfmPlaysMap.set(ct, Math.max(lfmPlaysMap.get(ct) || 0, cnt));
+      }
+    }
+
+    tracks.forEach((t, idx) => {
+      const ct = cleanTitleForMatching(t.title);
+      const lfmCnt = ct ? (lfmPlaysMap.get(ct) || 0) : 0;
+      const curCnt = Number(t.playCount || t.plays || t.listeners || 0);
+      const best = Math.max(curCnt, lfmCnt);
+      if (best > 0) {
+        t.playCount = best;
+        t.playsText = best.toLocaleString('en-US');
+      } else if (!t.playCount) {
+        t._origOrder = idx;
+      }
+    });
+
+    tracks.sort((a, b) => {
+      const pa = Number(a.playCount || a.plays || a.listeners || 0);
+      const pb = Number(b.playCount || b.plays || b.listeners || 0);
+      if (pb !== pa) return pb - pa;
+      return (a._origOrder ?? 0) - (b._origOrder ?? 0);
+    });
   } catch (_) {}
 
-  const ytmFallback = (tracks[0] && tracks[0].thumbnail) ? String(tracks[0].thumbnail).replace(/=w\d+-h\d+[^&?]*/i, '=w1400-h1400') : '';
+  const lfmPhotos = await fetchLastFmArtistPhotos(resolvedName || cleanName).catch(() => []);
+  let uniqueBanners = [];
+  if (lfmPhotos.length > 0) {
+    uniqueBanners = lfmPhotos;
+  } else {
+    const singleFallback = geniusArt?.banner || banner || avatar || '';
+    if (singleFallback) uniqueBanners = [singleFallback];
+  }
+
+  if (!avatar && lfmPhotos.length > 0) {
+    avatar = lfmPhotos[0];
+  }
+  if (!avatar) {
+    try {
+      const dzFallback = await httpGetJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(cleanName)}&limit=5`, 3500);
+      const dzCand = Array.isArray(dzFallback?.data)
+        ? dzFallback.data.find(a => a && (a.picture_xl || a.picture_big) && !/\/images\/artist\/\/|default/i.test(a.picture_xl || a.picture_big || ''))
+        : null;
+      if (dzCand) avatar = upgradeArtworkUrl(dzCand.picture_xl || dzCand.picture_big || dzCand.picture_medium || '');
+    } catch (_) {}
+  }
+
   const result = {
     name: resolvedName,
     bio: (bio || '').trim(),
-    avatar: avatar || ytmFallback,
-    banner: banner || geniusArt?.banner || avatar || (tracks[0] ? tracks[0].thumbnail : ''),
+    avatar: avatar || (lfmPhotos[0] || ''),
+    banner: uniqueBanners[0] || '',
+    banners: uniqueBanners,
     albums: albums,
     isVerified: isVerified,
     isKnownArtist: isKnownArtist,
@@ -5789,8 +6697,38 @@ function hasBrokenLyricText(text) {
   return typeof text === 'string' && text.includes('\uFFFD');
 }
 
+function isInstrumentalOrBreakcore(title, artist) {
+  return /\b(?:instrumental|breakcore|type\s+beat|backing\s+track|minus\s+one|minusovka|минусовка|karaoke\s+version|karaoke\s+mix)\b/i.test(`${title || ''} ${artist || ''}`);
+}
+
+function normalizeLyricMeta(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/\s*-\s*topic$/i, '')
+    .replace(/\s*[\(\[][^)\]]*(?:official\s*(?:music\s*)?(?:audio|video)|lyric\s*video|lyrics?|visualizer|hd|hq|4k)[^)\]]*[\)\]]/gi, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isStrictLyricMatch(reqTitle, reqArtist, candTitle, candArtist) {
+  if (isInstrumentalOrBreakcore(reqTitle, reqArtist) || isInstrumentalOrBreakcore(candTitle, candArtist)) {
+    return false;
+  }
+  const t1 = normalizeLyricMeta(reqTitle);
+  const t2 = normalizeLyricMeta(candTitle);
+  if (!t1 || !t2 || t1 !== t2) return false;
+  const a1 = normalizeLyricMeta(reqArtist);
+  const a2 = normalizeLyricMeta(candArtist);
+  if (!a1 || !a2) return false;
+  return a1 === a2;
+}
+
 function fetchLyricsDirect(title, artist) {
   return new Promise((resolve) => {
+    if (isInstrumentalOrBreakcore(title, artist)) {
+      return resolve({ instrumental: true, syncedLyrics: '', plainLyrics: '' });
+    }
     const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
     const apiUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
 
@@ -5803,11 +6741,13 @@ function fetchLyricsDirect(title, artist) {
         try {
           if (res.statusCode === 200) {
             const parsed = JSON.parse(data);
-            if (parsed.instrumental) {
-              return resolve({ instrumental: true, syncedLyrics: '', plainLyrics: '' });
-            }
-            if (parsed.syncedLyrics || parsed.plainLyrics) {
-              return resolve(parsed.syncedLyrics || parsed.plainLyrics);
+            if (isStrictLyricMatch(title, artist, parsed.trackName || parsed.title || parsed.name, parsed.artistName || parsed.artist)) {
+              if (parsed.instrumental) {
+                return resolve({ instrumental: true, syncedLyrics: '', plainLyrics: '' });
+              }
+              if (parsed.syncedLyrics || parsed.plainLyrics) {
+                return resolve(parsed.syncedLyrics || parsed.plainLyrics);
+              }
             }
           }
         } catch (e) {}
@@ -5822,12 +6762,13 @@ function fetchLyricsDirect(title, artist) {
             try {
               const list = JSON.parse(data2);
               if (Array.isArray(list) && list.length > 0) {
-                if (list[0].instrumental) {
-                  return resolve({ instrumental: true, syncedLyrics: '', plainLyrics: '' });
+                const matched = list.find(item => item && isStrictLyricMatch(title, artist, item.trackName || item.title || item.name, item.artistName || item.artist));
+                if (matched) {
+                  if (matched.instrumental) {
+                    return resolve({ instrumental: true, syncedLyrics: '', plainLyrics: '' });
+                  }
+                  return resolve(matched.syncedLyrics || matched.plainLyrics || null);
                 }
-                const withSynced = list.find(item => item.syncedLyrics);
-                if (withSynced) return resolve(withSynced.syncedLyrics);
-                return resolve(list[0].syncedLyrics || list[0].plainLyrics || null);
               }
             } catch (e) {}
             resolve(null);
@@ -5926,6 +6867,7 @@ function extractGeniusLyrics(html) {
 
 async function fetchGeniusLyrics(title, artist) {
   try {
+    if (isInstrumentalOrBreakcore(title, artist)) return null;
     const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
     const query = (cleanTitle + ' ' + cleanArtist).trim() || ((title || '') + ' ' + (artist || '')).trim();
     if (!query) return null;
@@ -5962,27 +6904,12 @@ async function fetchGeniusLyrics(title, artist) {
       } catch (_) {}
     }
 
-    if (hits.length > 0) {
-      const normSimple = s => (s || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
-      const nTitle = normSimple(cleanTitle || title);
-      const nArtist = normSimple(cleanArtist || artist);
-      let bestHit = hits[0];
-      let bestScore = -1;
-      for (const h of hits) {
-        if (!h || !h.result || !h.result.url) continue;
-        const hTitle = normSimple(h.result.title);
-        const hArtist = normSimple(h.result.artist_names);
-        let score = 0;
-        if (hTitle && nTitle && (hTitle === nTitle || hTitle.includes(nTitle) || nTitle.includes(hTitle))) score += 2;
-        if (hArtist && nArtist && (hArtist === nArtist || hArtist.includes(nArtist) || nArtist.includes(hArtist))) score += 1;
-        if (score > bestScore) {
-          bestScore = score;
-          bestHit = h;
-        }
-      }
+    if (isInstrumentalOrBreakcore(title, artist)) return null;
 
-      const songUrl = bestHit && bestHit.result && bestHit.result.url;
-      if (songUrl) {
+    if (hits.length > 0) {
+      const matchingHits = hits.filter(h => h?.result?.url && !h?.result?.instrumental && (isStrictLyricMatch(title, artist, h.result.title, h.result.artist_names) || isStrictLyricMatch(title, artist, h.result.title, h.result.primary_artist?.name)));
+      if (matchingHits.length > 0) {
+        const songUrl = matchingHits[0].result.url;
         try {
           const fetched = await fetchHtmlWithRedirects(songUrl, 5, 7000);
           if (fetched && fetched.body) {
@@ -6106,27 +7033,6 @@ async function getMusixmatchToken() {
 
 const fetchLrcLib = fetchLyricsDirect;
 
-function normalizeLyricMeta(str) {
-  return String(str || '')
-    .toLowerCase()
-    .replace(/\s*[\(\[][^)\]]*(?:official|audio|video|lyrics?|prod|feat|ft|remaster|version|edit)[^)\]]*[\)\]]/gi, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
-
-function isStrictLyricMatch(reqTitle, reqArtist, candTitle, candArtist) {
-  const t1 = normalizeLyricMeta(reqTitle);
-  const t2 = normalizeLyricMeta(candTitle);
-  if (!t1 || !t2 || t1 !== t2) return false;
-  const a1 = normalizeLyricMeta(reqArtist);
-  const a2 = normalizeLyricMeta(candArtist);
-  if (!a1 || !a2) return false;
-  if (a1 === a2) return true;
-  const parts1 = a1.split(/\s+/).filter(Boolean);
-  const parts2 = a2.split(/\s+/).filter(Boolean);
-  return parts1.length > 0 && parts1.join(' ') === parts2.join(' ');
-}
-
 async function fetchMusixmatchLyrics(title, artist) {
   try {
     const token = await getMusixmatchToken();
@@ -6230,6 +7136,7 @@ async function fetchKugouLyrics(title, artist, durationSec = 0) {
 
 function fetchNeteaseLyrics(title, artist, targetDuration) {
   return new Promise((resolve) => {
+    if (isInstrumentalOrBreakcore(title, artist)) return resolve(null);
     const cleanQuery = (title + ' ' + artist)
       .replace(/\s*\(feat\.[^)]*\)/gi, '')
       .replace(/\s*\[feat\.[^\]]*\]/gi, '')
@@ -6294,7 +7201,7 @@ function fetchNeteaseLyrics(title, artist, targetDuration) {
               if (Math.abs(songDur - targetDuration) > 4) return false;
             }
             return true;
-          }) || validSongs[0];
+          });
           if (matched && matched.id) {
             return fetchLyric(matched.id);
           }
@@ -6309,7 +7216,7 @@ function fetchNeteaseLyrics(title, artist, targetDuration) {
 
 function fetchNetEaseWords(title, artist, targetDuration) {
   return new Promise((resolve) => {
-    const normSimple = s => (s || '').toLowerCase().replace(/[^a-z0-9\u0400-\u04ff\u4e00-\u9fa5]/gi, '');
+    if (isInstrumentalOrBreakcore(title, artist)) return resolve(null);
     const cleanQuery = (title + ' ' + artist)
       .replace(/\s*\(feat\.[^)]*\)/gi, '')
       .replace(/\s*\[feat\.[^\]]*\]/gi, '')
@@ -6378,21 +7285,18 @@ function fetchNetEaseWords(title, artist, targetDuration) {
           try {
             const j = JSON.parse(d);
             const songs = (j.result && j.result.songs) || [];
-            if (songs.length > 0) {
-              const matched = songs.find(song => {
+            const validSongs = songs.filter(s =>
+              s && isStrictLyricMatch(title, artist, s.name, (s.artists || s.ar || []).map(a => a.name).join(' '))
+            );
+            if (validSongs.length > 0) {
+              const matched = validSongs.find(song => {
                 if (targetDuration && targetDuration > 0) {
                   const songDur = (song.dt || song.duration || 0) / 1000;
                   if (Math.abs(songDur - targetDuration) > 3) return false;
                 }
-                const normTargetTitle = normSimple(title);
-                const normCandTitle = normSimple(song.name);
-                if (!normTargetTitle || !normCandTitle || (!normTargetTitle.includes(normCandTitle) && !normCandTitle.includes(normTargetTitle))) return false;
-                const targetArtists = artist.split(/[,&\/\+]/).map(normSimple).filter(Boolean);
-                const candArtists = (song.artists || []).map(a => normSimple(a.name)).filter(Boolean);
-                if (targetArtists.length > 0 && !candArtists.some(ca => targetArtists.some(ta => ca.includes(ta) || ta.includes(ca)))) return false;
                 return true;
               });
-              if (matched) {
+              if (matched && matched.id) {
                 return fetchLyric(matched.id);
               }
             }
@@ -6430,6 +7334,7 @@ function fetchNetEaseWords(title, artist, targetDuration) {
 const SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
 
 const TOKEN_PROTECTED_ROUTES = new Set([
+  '/api/save-track-source',
   '/api/save-default-settings',
   '/api/state',
   '/api/translate',
@@ -6488,12 +7393,6 @@ function legacyCustomLyricsPath(title, artist) {
   return path.join(CUSTOM_LYRICS_DIR, safeName);
 }
 
-function legacyFetchedLyricsPath(title, artist) {
-  const cleanTitle = (title || '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-  const cleanArtist = (artist || '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-  return path.join(LYRICS_DIR, `${cleanArtist}___${cleanTitle}.lrc`);
-}
-
 function lyricsKey(title, artist) {
   return crypto.createHash('sha1').update(`${(artist || '').trim().toLowerCase()}\u0000${(title || '').trim().toLowerCase()}`).digest('hex').slice(0, 16);
 }
@@ -6503,7 +7402,7 @@ function getCustomLyricsPath(title, artist) {
 }
 
 function getFetchedLyricsPath(title, artist, source = 'lrclib') {
-  return path.join(LYRICS_DIR, lyricsKey(title, artist) + (source === 'genius' ? '_genius' : '') + '.lrc');
+  return path.join(LYRICS_DIR, lyricsKey(title, artist) + '_strict_v2_' + (source === 'genius' ? 'genius' : 'lrc') + '.lrc');
 }
 
 function isLyricsExplicit(lyrics) {
@@ -6576,17 +7475,11 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
       } catch (e) {}
     }
 
-    if (/\b(instrumental|type\s+beat)\b/i.test(title || '')) {
+    if (isInstrumentalOrBreakcore(title, artist)) {
       return sendInstrumental();
     }
 
     let fetchedLyricsPath = getFetchedLyricsPath(title, artist, normSource);
-    if (!fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
-      const legacyFetched = legacyFetchedLyricsPath(title, artist);
-      if (fs.existsSync(legacyFetched)) {
-        fetchedLyricsPath = legacyFetched;
-      }
-    }
 
     if (fs.existsSync(fetchedLyricsPath)) {
       try {
@@ -9187,7 +10080,55 @@ async function handleAlbumTracks(req, res, parsedUrl) {
     let album = null;
     let tracks = [];
 
-    if (id && id.startsWith('mb_')) {
+    if (id && id.startsWith('gn_alb_')) {
+      try {
+        const gnAlbumId = id.slice(7);
+        const [albMetaRes, albTracksRes] = await Promise.all([
+          httpGetJson(`https://genius.com/api/albums/${encodeURIComponent(gnAlbumId)}`, 5000, {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }).catch(() => null),
+          httpGetJson(`https://genius.com/api/albums/${encodeURIComponent(gnAlbumId)}/tracks?per_page=50`, 5000, {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }).catch(() => null)
+        ]);
+        const gAlb = albMetaRes?.response?.album;
+        const gTracks = albTracksRes?.response?.tracks || [];
+        if (gTracks.length > 0) {
+          const albCover = gAlb?.cover_art_url || gAlb?.cover_art_thumbnail_url || '';
+          const albArtist = gAlb?.artist?.name || artist || '';
+          tracks = gTracks.map((item, idx) => {
+            const s = item?.song || {};
+            const sTitle = s.title || `Track ${idx + 1}`;
+            const sArtist = s.primary_artist?.name || albArtist;
+            const sCover = s.song_art_image_thumbnail_url || albCover || '';
+            return {
+              id: `gn_${s.id || idx}`,
+              no: item.number || (idx + 1),
+              disc: 1,
+              title: sTitle,
+              artist: sArtist,
+              duration: 180,
+              durationMs: 180000,
+              thumbnail: sCover,
+              cover: sCover,
+              platform: 'soundcloud',
+              fromGenius: true,
+              isExplicit: isTextExplicit(sTitle)
+            };
+          });
+          album = {
+            id,
+            title: gAlb?.name || title || '',
+            artist: albArtist,
+            year: gAlb?.release_date_components?.year ? String(gAlb.release_date_components.year) : '',
+            trackCount: tracks.length,
+            cover: albCover
+          };
+        }
+      } catch (_) {}
+    }
+
+    if (id && id.startsWith('mb_') && tracks.length === 0) {
       try {
         const rgId = id.slice(3);
         const rgUrl = `https://musicbrainz.org/ws/2/release-group/${encodeURIComponent(rgId)}?inc=releases&fmt=json`;
@@ -10311,6 +11252,17 @@ async function requestHandler(req, res) {
     return handleTrending(req, res);
   }
 
+  if (parsedUrl.pathname === '/api/top-chart') {
+    return handleTopChart(req, res);
+  }
+
+  if (parsedUrl.pathname === '/api/youtube-account-info') {
+    const loggedIn = hasYtLoginCookies();
+    const user = loggedIn ? await fetchYoutubeAccountProfileFromCookies() : null;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, loggedIn, user }));
+  }
+
   if (parsedUrl.pathname === '/api/artist') {
     const name = parsedUrl.query.name || '';
     const hintTrack = parsedUrl.query.hintTrack || '';
@@ -10635,14 +11587,51 @@ async function requestHandler(req, res) {
     return res.end(JSON.stringify({ success: true, analysis: meta.analysis || null }));
   }
 
+  if (parsedUrl.pathname === '/api/save-track-source' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { if (body.length < MAX_BODY_BYTES) body += chunk; });
+    req.on('end', () => {
+      const payload = safeJsonParse(body, {});
+      if (payload.artist || payload.title) {
+        saveTrackSource(payload.artist || '', payload.title || '', {
+          resolvedId: payload.resolvedId || '',
+          url: payload.url || '',
+          platform: payload.platform || 'ytmusic',
+          sourceMeta: payload.sourceMeta || null
+        });
+      }
+      try { streamUrlCache.clear(); } catch (_) {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    });
+    return;
+  }
+
   if (parsedUrl.pathname === '/api/offline-delete' && req.method === 'POST') {
     const trackId = parsedUrl.query.id || '';
+    const qTitle = parsedUrl.query.title || '';
+    const qArtist = parsedUrl.query.artist || '';
     const cleanId = cleanTrackId(trackId);
-    const audioPath = await findCachedFile(cleanId);
-    const thumbPath = path.join(THUMBNAILS_DIR, `${cleanId}.jpg`);
-    try { if (audioPath && fs.existsSync(audioPath)) await fs.promises.unlink(audioPath); } catch (e) {}
-    try { if (fs.existsSync(thumbPath)) await fs.promises.unlink(thumbPath); } catch (e) {}
-    delete trackMetadataIndex[cleanId];
+    const metaCacheId = getMetaCacheId(qArtist, qTitle);
+    const idsToDelete = Array.from(new Set([cleanId, metaCacheId].filter(Boolean)));
+    for (const cid of idsToDelete) {
+      const p = await findCachedFile(cid);
+      try { if (p && fs.existsSync(p)) await fs.promises.unlink(p); } catch (_) {}
+      delete trackMetadataIndex[cid];
+    }
+    const byMetaPath = (qTitle || qArtist) ? findCachedFileByMeta(qTitle, qArtist) : null;
+    try { if (byMetaPath && fs.existsSync(byMetaPath)) await fs.promises.unlink(byMetaPath); } catch (_) {}
+    if (qTitle || qArtist) {
+      deleteSavedTrackSource(qArtist, qTitle);
+      for (const [k, v] of Object.entries(trackMetadataIndex)) {
+        if (k !== '__sources' && v && v.title === qTitle && v.artist === qArtist) {
+          delete trackMetadataIndex[k];
+        }
+      }
+    }
+    const thumbPath = cleanId ? path.join(THUMBNAILS_DIR, `${cleanId}.jpg`) : null;
+    try { if (thumbPath && fs.existsSync(thumbPath)) await fs.promises.unlink(thumbPath); } catch (_) {}
+    try { streamUrlCache.clear(); } catch (_) {}
     try { fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8'); } catch (e) {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));

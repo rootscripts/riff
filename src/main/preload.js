@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   googleLogin: () => ipcRenderer.invoke('google-login'),
   googleLogout: () => ipcRenderer.invoke('google-logout'),
   googleAuthStatus: () => ipcRenderer.invoke('google-auth-status'),
+  googleAccountInfo: () => ipcRenderer.invoke('google-account-info'),
   googleImportLibrary: (opts) => ipcRenderer.invoke('google-import-library', opts),
   youtubePlaybackLogin: () => ipcRenderer.invoke('youtube-playback-login'),
   youtubePlaybackLogout: () => ipcRenderer.invoke('youtube-playback-logout'),

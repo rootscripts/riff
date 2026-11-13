@@ -65,25 +65,33 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   try {
     const err = reason instanceof Error ? reason : new Error(String(reason));
+    if (/object has been destroyed/i.test(err.message || '')) return;
     logger.error('Unhandled rejection in main', err);
   } catch (_) {}
 });
 
-const enabledFeatures = [];
+function safeSend(win, channel, ...args) {
+  try {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  } catch (_) {}
+}
+
+const enabledFeatures = ['MemoryPurgeInBackground'];
 if (process.platform === 'linux') {
   enabledFeatures.push('WaylandWindowDecorations', 'UseOzonePlatform', 'WaylandFractionalScaleV1', 'MediaSessionService', 'HardwareMediaKeyHandling');
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-  app.commandLine.appendSwitch('disable-features', 'Vulkan,AudioServiceOutOfProcess');
+  app.commandLine.appendSwitch('disable-features', 'Vulkan,AudioServiceOutOfProcess,MediaRouter,OptimizationGuideModelDownloading,Translate');
 
   if (process.env.RIFF_SKIP_GPU_BUFFER_FLAGS !== '1') {
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
-    app.commandLine.appendSwitch('disable-gpu-memory-buffer-compositor-resources');
   }
 }
 
 if (process.platform === 'win32') {
   enabledFeatures.push('HardwareMediaKeyHandling', 'MediaSessionService');
-  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter,OptimizationGuideModelDownloading,Translate');
 }
 
 if (enabledFeatures.length > 0) {
@@ -100,18 +108,16 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-domain-reliability');
 app.commandLine.appendSwitch('disable-sync');
 app.commandLine.appendSwitch('disable-speech-api');
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256 --expose-gc');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512 --expose-gc');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disk-cache-size', '25165824');
-app.commandLine.appendSwitch('media-cache-size', '25165824');
 
-setInterval(() => {
+function performAppMemoryTrim() {
   try {
-    session.defaultSession.clearCache().catch(() => {});
     if (global.gc) global.gc();
   } catch (_) {}
-}, 90000);
+}
+
+setInterval(performAppMemoryTrim, 180000);
 app.on('ready', () => {
   const cleanUA = (app.userAgentFallback || '').replace(/\s*Electron\/[^\s]+/gi, '').replace(/\s*riff\/[^\s]+/gi, '');
   if (cleanUA) app.userAgentFallback = cleanUA;
@@ -411,6 +417,19 @@ function runGUI() {
       mainWindow.show();
     });
 
+    let _trimDebounceTimer = null;
+    const scheduleWindowTrim = (delayMs = 1500) => {
+      if (_trimDebounceTimer) clearTimeout(_trimDebounceTimer);
+      _trimDebounceTimer = setTimeout(() => {
+        _trimDebounceTimer = null;
+        performAppMemoryTrim();
+      }, delayMs);
+    };
+
+    mainWindow.on('blur', () => scheduleWindowTrim(1500));
+    mainWindow.on('minimize', () => scheduleWindowTrim(400));
+    mainWindow.on('hide', () => scheduleWindowTrim(400));
+
     mainWindow.loadFile(path.join(__dirname, '../renderer', firstRun ? 'welcome.html' : 'index.html'));
     if (firstRun) {
       ipcMain.removeAllListeners('welcome-finish');
@@ -445,10 +464,8 @@ function runGUI() {
     });
 
     mainWindow.on('minimize', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('window-visibility', false);
-        if (global.gc) global.gc();
-      }
+      safeSend(mainWindow, 'window-visibility', false);
+      if (global.gc) global.gc();
     });
 
     mainWindow.on('blur', () => {
@@ -456,21 +473,19 @@ function runGUI() {
     });
 
     mainWindow.on('restore', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('window-visibility', true);
-      }
+      safeSend(mainWindow, 'window-visibility', true);
     });
 
     mainWindow.on('hide', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('window-visibility', false);
-      }
+      safeSend(mainWindow, 'window-visibility', false);
     });
 
     mainWindow.on('show', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('window-visibility', true);
-      }
+      safeSend(mainWindow, 'window-visibility', true);
+      updateWindowsThumbar(lastThumbarPlaying);
+    });
+    mainWindow.once('ready-to-show', () => {
+      updateWindowsThumbar(false);
     });
     mainWindow.on('resize', persistWindowState);
     mainWindow.on('move', persistWindowState);
@@ -517,10 +532,129 @@ function runGUI() {
     });
 
     ipcMain.on('open-external', (e, u) => {
-      if (/^https:\/\/(?:accounts\.spotify\.com|(?:www\.)?last\.fm|github\.com)\//i.test(String(u))) {
+      if (/^https:\/\/(?:accounts\.spotify\.com|accounts\.google\.com|music\.youtube\.com|(?:www\.)?youtube\.com|ko-fi\.com|(?:www\.)?last\.fm|github\.com)\//i.test(String(u))) {
         shell.openExternal(String(u));
       }
     });
+
+    const thumbarIconCache = new Map();
+    function createThumbarIcon(type) {
+      if (thumbarIconCache.has(type)) return thumbarIconCache.get(type);
+      const W = 32, H = 32;
+      const raw = Buffer.alloc((W * 4 + 1) * H, 0);
+      const setPx = (x, y, a = 255) => {
+        const ix = Math.round(x), iy = Math.round(y);
+        if (ix < 0 || ix >= W || iy < 0 || iy >= H) return;
+        const off = iy * (W * 4 + 1) + 1 + ix * 4;
+        raw[off] = 255; raw[off + 1] = 255; raw[off + 2] = 255;
+        raw[off + 3] = Math.max(raw[off + 3], Math.min(255, Math.round(a)));
+      };
+      const fillRect = (x0, y0, w, h) => {
+        for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) setPx(x, y, 255);
+      };
+      const fillTri = (x1, y1, x2, y2, x3, y3) => {
+        const minX = Math.floor(Math.min(x1, x2, x3)), maxX = Math.ceil(Math.max(x1, x2, x3));
+        const minY = Math.floor(Math.min(y1, y2, y3)), maxY = Math.ceil(Math.max(y1, y2, y3));
+        const edge = (ax, ay, bx, by, px, py) => (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+        const area = edge(x1, y1, x2, y2, x3, y3);
+        const sign = area < 0 ? -1 : 1;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const w0 = edge(x2, y2, x3, y3, x + 0.5, y + 0.5) * sign;
+            const w1 = edge(x3, y3, x1, y1, x + 0.5, y + 0.5) * sign;
+            const w2 = edge(x1, y1, x2, y2, x + 0.5, y + 0.5) * sign;
+            if (w0 >= 0 && w1 >= 0 && w2 >= 0) setPx(x, y, 255);
+          }
+        }
+      };
+
+      if (type === 'play') {
+        fillTri(9, 6, 25, 16, 9, 26);
+      } else if (type === 'pause') {
+        fillRect(8, 6, 5, 20);
+        fillRect(19, 6, 5, 20);
+      } else if (type === 'prev') {
+        fillRect(6, 7, 3, 18);
+        fillTri(24, 7, 10, 16, 24, 25);
+      } else if (type === 'next') {
+        fillTri(8, 7, 22, 16, 8, 25);
+        fillRect(23, 7, 3, 18);
+      } else if (type === 'seek-back') {
+        fillTri(16, 8, 5, 16, 16, 24);
+        fillTri(27, 8, 16, 16, 27, 24);
+      } else if (type === 'seek-forward') {
+        fillTri(5, 8, 16, 16, 5, 24);
+        fillTri(16, 8, 27, 16, 16, 24);
+      }
+
+      const crcTable = (() => {
+        const t = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+          t[n] = c >>> 0;
+        }
+        return t;
+      })();
+      const crc32 = (buf) => {
+        let c = 0xffffffff;
+        for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+        return (c ^ 0xffffffff) >>> 0;
+      };
+      const chunk = (typeStr, dataBuf) => {
+        const len = Buffer.alloc(4); len.writeUInt32BE(dataBuf.length, 0);
+        const tp = Buffer.from(typeStr, 'ascii');
+        const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([tp, dataBuf])), 0);
+        return Buffer.concat([len, tp, dataBuf, crc]);
+      };
+      const ihdr = Buffer.alloc(13);
+      ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4);
+      ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+      const png = Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        chunk('IHDR', ihdr),
+        chunk('IDAT', zlib.deflateSync(raw)),
+        chunk('IEND', Buffer.alloc(0))
+      ]);
+      const img = nativeImage.createFromBuffer(png);
+      thumbarIconCache.set(type, img);
+      return img;
+    }
+
+    let lastThumbarPlaying = null;
+    function updateWindowsThumbar(isPlaying = false) {
+      if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return;
+      lastThumbarPlaying = !!isPlaying;
+      try {
+        mainWindow.setThumbarButtons([
+          {
+            tooltip: 'Previous',
+            icon: createThumbarIcon('prev'),
+            click: () => safeSend(mainWindow, 'media-control', 'prev')
+          },
+          {
+            tooltip: '-5s',
+            icon: createThumbarIcon('seek-back'),
+            click: () => safeSend(mainWindow, 'media-control', 'seek-back')
+          },
+          {
+            tooltip: isPlaying ? 'Pause' : 'Play',
+            icon: createThumbarIcon(isPlaying ? 'pause' : 'play'),
+            click: () => safeSend(mainWindow, 'media-control', 'play-pause')
+          },
+          {
+            tooltip: '+5s',
+            icon: createThumbarIcon('seek-forward'),
+            click: () => safeSend(mainWindow, 'media-control', 'seek-forward')
+          },
+          {
+            tooltip: 'Next',
+            icon: createThumbarIcon('next'),
+            click: () => safeSend(mainWindow, 'media-control', 'next')
+          }
+        ]);
+      } catch (_) {}
+    }
 
     let mainLogCount = 0;
     let mainLogReset = Date.now();
@@ -579,10 +713,12 @@ function runGUI() {
 
       ipcMain.on('discord-rpc-update', (event, trackInfo) => {
         discordRPC.updatePresence(trackInfo);
+        updateWindowsThumbar(true);
       });
 
       ipcMain.on('discord-rpc-clear', () => {
         discordRPC.clearPresence();
+        updateWindowsThumbar(false);
       });
 
       ipcMain.on('discord-rpc-set-enabled', (event, enabled) => {
@@ -1433,7 +1569,94 @@ function runGUI() {
 
       const YT_COOKIES_FILE = path.join(DATA_DIR, 'yt-cookies.txt');
       const YT_LOGOUT_FLAG = path.join(DATA_DIR, '.yt-logged-out');
+      const YT_PROFILE_FILE = path.join(DATA_DIR, 'yt_profile.json');
       let youtubeCookieImportPromise = null;
+
+      function readCachedYoutubeProfile() {
+        try {
+          if (fs.existsSync(YT_PROFILE_FILE)) {
+            const data = JSON.parse(fs.readFileSync(YT_PROFILE_FILE, 'utf8'));
+            if (data && (data.name || data.handle || data.avatar)) return data;
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      function saveCachedYoutubeProfile(profile) {
+        try {
+          if (profile) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+            fs.writeFileSync(YT_PROFILE_FILE, JSON.stringify(profile), 'utf8');
+          }
+        } catch (_) {}
+      }
+
+      async function fetchYoutubeUserProfile() {
+        try {
+          const s = session.fromPartition('persist:riff-google');
+          const cookies = await s.cookies.get({});
+          const sapisidCookie = Array.isArray(cookies) ? (
+            cookies.find(c => c && c.name === 'SAPISID' && c.value) ||
+            cookies.find(c => c && c.name === '__Secure-3PAPISID' && c.value) ||
+            cookies.find(c => c && c.name === '__Secure-1PAPISID' && c.value)
+          ) : null;
+          if (!sapisidCookie) return null;
+          const sapisid = sapisidCookie.value;
+          const origin = 'https://www.youtube.com';
+          const ts = Math.floor(Date.now() / 1000);
+          const hash = crypto.createHash('sha1').update(`${ts} ${sapisid} ${origin}`).digest('hex');
+          const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+          const resp = await fetch('https://www.youtube.com/youtubei/v1/account/account_menu?prettyPrint=false', {
+            method: 'POST',
+            headers: {
+              'Authorization': `SAPISIDHASH ${ts}_${hash}`,
+              'Content-Type': 'application/json',
+              'Origin': origin,
+              'Referer': `${origin}/`,
+              'X-Origin': origin,
+              'X-Goog-AuthUser': '0',
+              'Cookie': cookieHeader
+            },
+            body: JSON.stringify({
+              context: {
+                client: {
+                  clientName: 'WEB',
+                  clientVersion: '2.20240401.01.00',
+                  hl: 'en',
+                  gl: 'US'
+                }
+              }
+            }),
+            signal: AbortSignal.timeout(7000)
+          });
+          if (!resp.ok) return null;
+          const data = await resp.json();
+          let header = null;
+          const walk = (node) => {
+            if (!node || typeof node !== 'object' || header) return;
+            if (node.activeAccountHeaderRenderer) {
+              header = node.activeAccountHeaderRenderer;
+              return;
+            }
+            for (const k of Object.keys(node)) {
+              walk(node[k]);
+            }
+          };
+          walk(data);
+          if (!header) return null;
+          const name = header.accountName?.simpleText || (header.accountName?.runs && header.accountName.runs[0]?.text) || '';
+          const handle = (header.channelHandle?.runs && header.channelHandle.runs[0]?.text) || header.email?.simpleText || '';
+          const thumbs = header.accountPhoto?.thumbnails;
+          const avatar = Array.isArray(thumbs) && thumbs.length > 0 ? thumbs[thumbs.length - 1].url : '';
+          const profile = { name, handle, avatar, avatarUrl: avatar };
+          if (name || handle || avatar) {
+            saveCachedYoutubeProfile(profile);
+            return profile;
+          }
+        } catch (_) {}
+        return readCachedYoutubeProfile();
+      }
 
       function hasValidYtCookiesFile(file = YT_COOKIES_FILE) {
         try {
@@ -1537,39 +1760,62 @@ function runGUI() {
       }
 
       const CLEAN_LOGIN_UA = process.platform === 'darwin'
-        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
         : process.platform === 'win32'
-        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
+        : 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0';
 
-      async function openYoutubeSignInWindow() {
-        if (!fs.existsSync(YT_LOGOUT_FLAG)) {
+      let googleSessionHeadersHooked = false;
+      function ensureCleanGoogleSession(googleSession) {
+        googleSession.setUserAgent(CLEAN_LOGIN_UA);
+        if (googleSessionHeadersHooked) return;
+        googleSessionHeadersHooked = true;
+        try {
+          googleSession.webRequest.onBeforeSendHeaders((details, callback) => {
+            const headers = details.requestHeaders || {};
+            headers['User-Agent'] = CLEAN_LOGIN_UA;
+            for (const k of Object.keys(headers)) {
+              if (/^sec-ch-ua/i.test(k)) {
+                delete headers[k];
+              }
+            }
+            callback({ requestHeaders: headers });
+          });
+        } catch (_) {}
+      }
+
+      async function openYoutubeSignInWindow(force = false) {
+        if (!force && !fs.existsSync(YT_LOGOUT_FLAG)) {
           const imported = await exportYoutubeCookiesToDisk().catch(() => false);
           if (imported && hasValidYtCookiesFile()) {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('youtube-playback-auth', { success: true, loggedIn: true });
-            }
-            return { success: true, loggedIn: true };
+            const user = await fetchYoutubeUserProfile().catch(() => null);
+            safeSend(mainWindow, 'youtube-playback-auth', { success: true, loggedIn: true, user });
+            return { success: true, loggedIn: true, user };
           }
         }
+        try {
+          if (fs.existsSync(YT_LOGOUT_FLAG)) fs.unlinkSync(YT_LOGOUT_FLAG);
+        } catch (_) {}
 
         if (youtubePlaybackWindow && !youtubePlaybackWindow.isDestroyed()) {
           youtubePlaybackWindow.show();
           youtubePlaybackWindow.focus();
           return new Promise((resolve) => {
-            youtubePlaybackWindow.once('closed', () => {
-              resolve({ success: hasValidYtCookiesFile(), loggedIn: hasValidYtCookiesFile() });
+            youtubePlaybackWindow.once('closed', async () => {
+              const loggedIn = hasValidYtCookiesFile();
+              const user = loggedIn ? await fetchYoutubeUserProfile().catch(() => null) : null;
+              resolve({ success: loggedIn, loggedIn, user });
             });
           });
         }
 
         const googleSession = session.fromPartition('persist:riff-google');
-        googleSession.setUserAgent(CLEAN_LOGIN_UA);
+        ensureCleanGoogleSession(googleSession);
 
         return new Promise((resolve) => {
           const loginWindow = new BrowserWindow({
-            width: 960,
-            height: 720,
+            width: 520,
+            height: 680,
             title: 'Sign in to YouTube Music',
             autoHideMenuBar: true,
             parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
@@ -1577,11 +1823,24 @@ function runGUI() {
               session: googleSession,
               nodeIntegration: false,
               contextIsolation: true,
-              sandbox: true
+              sandbox: true,
+               preload: undefined
             }
           });
           youtubePlaybackWindow = loginWindow;
           loginWindow.webContents.setUserAgent(CLEAN_LOGIN_UA);
+
+          const spoofPageEnv = () => {
+            if (!loginWindow || loginWindow.isDestroyed()) return;
+            loginWindow.webContents.executeJavaScript(`
+              try {
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                if ('chrome' in window) { try { delete window.chrome; } catch (_) {} }
+              } catch (_) {}
+            `).catch(() => {});
+          };
+          loginWindow.webContents.on('dom-ready', spoofPageEnv);
+          loginWindow.webContents.on('did-navigate', spoofPageEnv);
 
           let pollTimer = null;
           let settled = false;
@@ -1594,9 +1853,10 @@ function runGUI() {
               loggedIn: false,
               error: error && error.message ? error.message : 'Could not save the YouTube session.'
             }));
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('youtube-playback-auth', result);
+            if (result && result.loggedIn) {
+              result.user = await fetchYoutubeUserProfile().catch(() => null);
             }
+            safeSend(mainWindow, 'youtube-playback-auth', result);
             resolve(result);
           };
 
@@ -1606,22 +1866,27 @@ function runGUI() {
               return;
             }
             try {
+              const curUrl = loginWindow.webContents.getURL() || '';
+              const onYoutube = /^https:\/\/(?:music\.|www\.)?youtube\.com\//i.test(curUrl);
               const cookies = await googleSession.cookies.get({});
               const hasAuth = cookies.some(c =>
                 ['SAPISID', '__Secure-3PAPISID', '__Secure-1PAPISID', 'LOGIN_INFO'].includes(c.name) &&
                 String(c.domain || '').includes('youtube.com')
               );
-              if (hasAuth) {
+              if (hasAuth && onYoutube) {
                 clearInterval(pollTimer);
                 pollTimer = null;
                 await finishAuth();
                 if (!loginWindow.isDestroyed()) loginWindow.close();
               }
             } catch (_) {}
-          }, 1200);
+          }, 1000);
 
           loginWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-            if (isYoutubeAuthUrl(targetUrl)) return { action: 'allow' };
+            if (isYoutubeAuthUrl(targetUrl)) {
+              loginWindow.loadURL(targetUrl, { userAgent: CLEAN_LOGIN_UA }).catch(() => {});
+              return { action: 'deny' };
+            }
             shell.openExternal(targetUrl);
             return { action: 'deny' };
           });
@@ -1631,10 +1896,12 @@ function runGUI() {
             await finishAuth();
           });
 
-          loginWindow.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F').then(() => {
+          loginWindow.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F', {
+            userAgent: CLEAN_LOGIN_UA
+          }).then(() => {
             if (!loginWindow.isDestroyed()) loginWindow.show();
           }).catch(() => {
-            if (!loginWindow.isDestroyed()) loginWindow.loadURL('https://music.youtube.com/').catch(() => {});
+            if (!loginWindow.isDestroyed()) loginWindow.loadURL('https://music.youtube.com/', { userAgent: CLEAN_LOGIN_UA }).catch(() => {});
           });
         });
       }
@@ -1644,7 +1911,7 @@ function runGUI() {
       }));
 
       ipcMain.handle('youtube-playback-login', async () => {
-        return await openYoutubeSignInWindow();
+        return await openYoutubeSignInWindow(true);
       });
 
       ipcMain.handle('youtube-playback-logout', async () => {
@@ -1659,63 +1926,6 @@ function runGUI() {
         }
       });
 
-      function getSystemDefaultBrowserSpec() {
-        try {
-          if (process.platform === 'linux') {
-            const raw = execSync('xdg-settings get default-web-browser 2>/dev/null || true', { encoding: 'utf8' }).trim().toLowerCase();
-            if (raw.includes('firefox')) return 'firefox';
-            if (raw.includes('zen')) return 'firefox:' + path.join(os.homedir(), '.zen');
-            if (raw.includes('brave')) return 'brave';
-            if (raw.includes('google-chrome') || raw.includes('chrome')) return 'chrome';
-            if (raw.includes('chromium')) return 'chromium';
-            if (raw.includes('vivaldi')) return 'vivaldi';
-            if (raw.includes('edge')) return 'edge';
-          }
-        } catch (_) {}
-        return 'firefox';
-      }
-
-      function getCandidateBrowserSpecs() {
-        const home = os.homedir();
-        const specs = [getSystemDefaultBrowserSpec()];
-        const addIfDir = (dirPath, spec) => {
-          try {
-            if (fs.existsSync(dirPath) && !specs.includes(spec)) specs.push(spec);
-          } catch (_) {}
-        };
-        if (process.platform === 'linux') {
-          addIfDir(path.join(home, '.config', 'BraveSoftware', 'Brave-Browser'), 'brave');
-          addIfDir(path.join(home, '.mozilla', 'firefox'), 'firefox');
-          addIfDir(path.join(home, '.config', 'google-chrome'), 'chrome');
-          addIfDir(path.join(home, '.config', 'chromium'), 'chromium');
-          addIfDir(path.join(home, '.zen'), 'firefox:' + path.join(home, '.zen'));
-          addIfDir(path.join(home, '.config', 'zen'), 'firefox:' + path.join(home, '.config', 'zen'));
-          addIfDir(path.join(home, '.var/app/app.zen_browser.zen/.zen'), 'firefox:' + path.join(home, '.var/app/app.zen_browser.zen/.zen'));
-          addIfDir(path.join(home, '.librewolf'), 'firefox:' + path.join(home, '.librewolf'));
-          addIfDir(path.join(home, '.floorp'), 'firefox:' + path.join(home, '.floorp'));
-          addIfDir(path.join(home, '.config', 'vivaldi'), 'vivaldi');
-          addIfDir(path.join(home, '.config', 'microsoft-edge'), 'edge');
-        } else if (process.platform === 'win32') {
-          const local = process.env.LOCALAPPDATA || '';
-          const roaming = process.env.APPDATA || '';
-          addIfDir(path.join(roaming, 'Mozilla', 'Firefox'), 'firefox');
-          addIfDir(path.join(local, 'Google', 'Chrome'), 'chrome');
-          addIfDir(path.join(local, 'BraveSoftware', 'Brave-Browser'), 'brave');
-          addIfDir(path.join(local, 'Microsoft', 'Edge'), 'edge');
-          addIfDir(path.join(roaming, 'Zen'), 'firefox:' + path.join(roaming, 'Zen'));
-          addIfDir(path.join(local, 'Vivaldi'), 'vivaldi');
-        } else if (process.platform === 'darwin') {
-          const appSup = path.join(home, 'Library', 'Application Support');
-          addIfDir(path.join(appSup, 'Firefox'), 'firefox');
-          addIfDir(path.join(appSup, 'Google', 'Chrome'), 'chrome');
-          addIfDir(path.join(appSup, 'BraveSoftware', 'Brave-Browser'), 'brave');
-          addIfDir(path.join(appSup, 'zen'), 'firefox:' + path.join(appSup, 'zen'));
-        }
-        if (!specs.includes('firefox')) specs.push('firefox');
-        if (!specs.includes('chrome')) specs.push('chrome');
-        return specs;
-      }
-
       let exportCookiesPromise = null;
       function exportYoutubeCookiesToDisk() {
         if (exportCookiesPromise) return exportCookiesPromise;
@@ -1724,49 +1934,6 @@ function runGUI() {
           if (hasValidYtCookiesFile()) {
             await importYoutubeCookiesToSession();
             return true;
-          }
-
-          const tmpTestCookie = '/tmp/test-yt-cookies.txt';
-          try {
-            if (fs.existsSync(tmpTestCookie)) {
-              const tmpTxt = fs.readFileSync(tmpTestCookie, 'utf8');
-              if (cookieJarHasYtLogin(tmpTxt)) {
-                fs.writeFileSync(YT_COOKIES_FILE, tmpTxt, 'utf8');
-                await importYoutubeCookiesToSession();
-                try { if (fs.existsSync(YT_LOGOUT_FLAG)) fs.unlinkSync(YT_LOGOUT_FLAG); } catch (_) {}
-                return true;
-              }
-            }
-          } catch (_) {}
-
-          const ytdlpBin = resolveBinary('yt-dlp');
-          if (!ytdlpBin) return false;
-
-          const specs = getCandidateBrowserSpecs();
-          for (const spec of specs) {
-            const tmpJar = path.join(DATA_DIR, `.yt-cookies-${process.pid}.tmp`);
-            try { fs.rmSync(tmpJar, { force: true }); } catch (_) {}
-            try {
-              await new Promise((resolve) => {
-                execFile(ytdlpBin, [
-                  '--no-config',
-                  '--cookies-from-browser', spec,
-                  '--cookies', tmpJar,
-                  '--skip-download',
-                  '--no-warnings',
-                  'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
-                ], { timeout: 15000, windowsHide: true }, () => resolve());
-              });
-              if (hasValidYtCookiesFile(tmpJar)) {
-                fs.copyFileSync(tmpJar, YT_COOKIES_FILE);
-                await importYoutubeCookiesToSession();
-                try { if (fs.existsSync(YT_LOGOUT_FLAG)) fs.unlinkSync(YT_LOGOUT_FLAG); } catch (_) {}
-                return true;
-              }
-            } catch (_) {
-            } finally {
-              try { fs.rmSync(tmpJar, { force: true }); } catch (_) {}
-            }
           }
           return false;
         })().finally(() => { exportCookiesPromise = null; });
@@ -1914,9 +2081,21 @@ function runGUI() {
         const hasCookies = hasValidYtCookiesFile();
         if (hasCookies) {
           await importYoutubeCookiesToSession().catch(() => {});
-          return { loggedIn: true };
+          let profile = readCachedYoutubeProfile();
+          if (!profile) {
+            profile = await fetchYoutubeUserProfile().catch(() => null);
+          }
+          return { loggedIn: true, user: profile };
         }
         return { loggedIn: false };
+      });
+
+      ipcMain.handle('google-account-info', async () => {
+        let profile = readCachedYoutubeProfile();
+        if (!profile) {
+          profile = await fetchYoutubeUserProfile().catch(() => null);
+        }
+        return profile;
       });
 
       ipcMain.handle('google-logout', async () => {
@@ -1933,6 +2112,7 @@ function runGUI() {
           fs.writeFileSync(YT_LOGOUT_FLAG, '1', 'utf8');
           if (fs.existsSync(GOOGLE_OAUTH_FILE)) fs.unlinkSync(GOOGLE_OAUTH_FILE);
           if (fs.existsSync(YT_COOKIES_FILE)) fs.unlinkSync(YT_COOKIES_FILE);
+          if (fs.existsSync(YT_PROFILE_FILE)) fs.unlinkSync(YT_PROFILE_FILE);
           const s = session.fromPartition('persist:riff-google');
           await s.clearStorageData();
         } catch (e) {
@@ -1955,7 +2135,7 @@ function runGUI() {
       });
 
       ipcMain.handle('google-login', async () => {
-        return await openYoutubeSignInWindow();
+        return await openYoutubeSignInWindow(true);
       });
 
       ipcMain.handle('google-import-library', async (event, opts) => {
@@ -2306,9 +2486,7 @@ function runGUI() {
             {
               label: 'Play/Pause',
               click: () => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('media-command', 'toggle');
-                }
+                safeSend(mainWindow, 'media-command', 'toggle');
               }
             },
             { type: 'separator' },
