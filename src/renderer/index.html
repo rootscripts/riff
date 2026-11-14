@@ -299,6 +299,62 @@
   .acc-satellite-btn.sat-spotify    { top: 126px; left: 24px; background: #1ed760 !important; }
   .acc-satellite-btn.sat-youtube    { top: 60px; left: 7px; background: #ffffff !important; }
   body.perf .acc-satellite-btn { transition: none !important; }
+  .tg-account-name-wrap {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+  }
+  .account-badges-inline {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex-shrink: 0 !important;
+  }
+  .account-badge-img {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    object-fit: contain !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35)) !important;
+  }
+  .settings-nav-account-name-row {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    min-width: 0 !important;
+  }
+  .settings-nav-account-name-row .account-badge-img {
+    width: 15px !important;
+    height: 15px !important;
+    min-width: 15px !important;
+    max-width: 15px !important;
+  }
+  .riff-dots-loader {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    pointer-events: none !important;
+  }
+  .riff-dots-loader i {
+    width: 7px !important;
+    height: 7px !important;
+    border-radius: 50% !important;
+    background: currentColor !important;
+    display: block !important;
+    animation: bsDotWave 0.95s ease-in-out infinite !important;
+  }
+  .riff-dots-loader i:nth-child(2) { animation-delay: 0.14s !important; }
+  .riff-dots-loader i:nth-child(3) { animation-delay: 0.28s !important; }
+  .riff-dots-loader.sm { gap: 4px !important; }
+  .riff-dots-loader.sm i { width: 5px !important; height: 5px !important; }
+  .riff-dots-loader.lg { gap: 8px !important; }
+  .riff-dots-loader.lg i { width: 9px !important; height: 9px !important; }
+  .m3-search-shape-stage.is-error .riff-dots-loader { display: none !important; }
 </style>
 <style id="boot-skeleton-css">
 #boot-skeleton { position: fixed; inset: 0; z-index: 999999; background: #000000; display: flex; flex-direction: column; padding: 8px; gap: 8px; box-sizing: border-box; user-select: none; pointer-events: all; transition: opacity 160ms ease; }
@@ -894,6 +950,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </select>
               <button class="sp-hero-play-btn" id="btn-play-playlist" title="Play" aria-label="Play" type="button"><svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5.25C7 4.22 8.13 3.59 9.01 4.14L18.8 10.89C19.6 11.39 19.6 12.61 18.8 13.11L9.01 19.86C8.13 20.41 7 19.78 7 18.75V5.25Z"/></svg></button>
               <button class="sp-quiet-icon-btn" id="btn-play-playlist-shuffle" title="Shuffle play" aria-label="Shuffle play" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg></button>
+              <button class="sp-quiet-icon-btn" id="btn-playlist-add-local" title="Add local files" aria-label="Add local files" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg></button>
               <button class="sp-quiet-icon-btn" id="btn-playlist-more" title="More options" aria-label="More options" type="button"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button>
               <button class="btn-outline-pill hidden" id="btn-download-playlist" title="Download all songs" aria-label="Download all songs">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1143,7 +1200,10 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               <button class="settings-nav-btn settings-account-nav-btn" data-cat="account" id="settings-nav-account" type="button">
                 <img id="settings-nav-avatar" class="settings-nav-avatar" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%232b2d31'/%3E%3Ccircle cx='32' cy='24' r='11' fill='%23949ba4'/%3E%3Cpath d='M12 56c0-11 9-18 20-18s20 7 20 18' fill='%23949ba4'/%3E%3C/svg%3E" alt="" draggable="false" />
                 <div class="settings-nav-account-meta">
-                  <span class="settings-nav-account-name" id="settings-nav-account-name" data-i18n-fixed>User</span>
+                  <div class="settings-nav-account-name-row">
+                    <span class="settings-nav-account-name" id="settings-nav-account-name" data-i18n-fixed>User</span>
+                    <span class="account-badges-inline" id="settings-nav-account-badges"></span>
+                  </div>
                   <span class="settings-nav-account-sub" data-i18n>Account</span>
                 </div>
               </button>
@@ -1751,11 +1811,27 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                     </div>
                     <div class="tg-account-name-wrap">
                       <input type="text" id="account-nickname-input" class="tg-account-name-input" value="User" maxlength="32" placeholder="User" autocomplete="off" />
+                      <span class="account-badges-inline" id="account-hero-badges"></span>
                     </div>
                   </div>
                 </div>
 
                 <div class="m3-group">
+                  <div class="setting-item" id="setting-account-promocode">
+                    <div class="setting-item-top" style="align-items: center; justify-content: space-between; gap: 12px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--md-sys-color-primary); flex-shrink: 0;">
+                          <polyline points="20 12 20 22 4 22 4 12"></polyline>
+                          <rect x="2" y="7" width="20" height="5"></rect>
+                          <line x1="12" y1="22" x2="12" y2="7"></line>
+                          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
+                          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+                        </svg>
+                        <span class="setting-name" data-i18n>Promocode</span>
+                      </div>
+                      <input type="text" id="account-promocode-input" class="pill-text-input" placeholder="Enter code..." style="width: 220px; height: 36px; font-size: 13px;" autocomplete="off" />
+                    </div>
+                  </div>
                   <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -2806,6 +2882,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                           </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                          <button type="button" class="btn-outline-pill" id="btn-adv-yt-browser-sync" style="height: 32px; padding: 0 14px; font-size: 12.5px;" title="Import active YouTube login from your system browser" data-i18n>From browser</button>
                           <button type="button" class="btn-pill-primary" id="btn-adv-yt-login" style="height: 32px; padding: 0 16px; font-size: 12.5px;" data-i18n>Sign in</button>
                           <button type="button" class="btn-outline-pill hidden" id="btn-adv-yt-logout" style="height: 32px; padding: 0 14px; font-size: 12.5px;" data-i18n>Sign out</button>
                         </div>
@@ -3133,7 +3210,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
                   </div>
                   <div style="display: flex; flex-direction: column;">
                     <span class="setting-name">Riff</span>
-                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.7.5</span>
+                    <span id="about-version" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Version 0.7.6</span>
                   </div>
                 </div>
                 <button class="btn-pill-primary" id="btn-check-updates" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Check for updates</button>
@@ -3170,7 +3247,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
               </svg>
               Riff made by rootless, support me: <a href="https://t.me/riffplayer" target="_blank" rel="noopener">t.me/riffplayer</a>
             </span>
-            <span class="settings-version-tag">v0.7.5</span>
+            <span class="settings-version-tag">v0.7.6</span>
           </div>
             </div>
           </div>
@@ -3355,10 +3432,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
 
   <div class="track-loading-overlay hidden" id="track-loading-overlay">
     <div class="m3-spinner-container">
-      <svg class="m3-circular-progress" viewBox="0 0 48 48">
-        <circle class="m3-spinner-track" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle>
-        <circle class="m3-spinner-head" cx="24" cy="24" r="18" fill="none" stroke-width="4"></circle>
-      </svg>
+      <span class="riff-dots-loader lg" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   </div>
 
@@ -4138,8 +4212,9 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
       </div>
       <div class="link-pane sp-pane hidden" data-mode="login">
         <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">Log in with your Google account to import your liked music and playlists directly.</div>
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
           <button type="button" class="btn-outline-pill" id="btn-google-login">Log in with Google</button>
+          <button type="button" class="btn-outline-pill" id="btn-google-browser-sync" data-i18n>From browser</button>
           <button type="button" class="btn-outline-pill hidden" id="btn-google-logout">Log out</button>
           <span id="google-login-status" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Not connected</span>
         </div>
@@ -4517,7 +4592,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
     <div class="ota-update-sheet" id="update-sheet-card">
       <div class="ota-update-time" id="update-release-time">Just now</div>
       <div class="ota-update-top-row">
-        <span class="ota-update-version" id="update-version-badge">v0.7.5</span>
+        <span class="ota-update-version" id="update-version-badge">v0.7.6</span>
         <div class="ota-update-actions">
           <button class="ota-btn-update" id="btn-update-now" type="button" data-i18n>Update</button>
           <button class="ota-btn-ignore" id="btn-update-later" type="button" data-i18n>Ignore</button>
@@ -4535,7 +4610,7 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
       </div>
     </div>
     <div class="ota-center-spinner hidden" id="update-center-spinner">
-      <svg class="g-spinner" width="46" height="46" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg>
+      <span class="riff-dots-loader lg" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="ota-spinner-label" id="update-spinner-label" data-i18n>Updating Riff...</span>
     </div>
   </div>
@@ -4845,10 +4920,8 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
   </div>
 
   <div class="i18n-loading-overlay hidden" id="i18n-loading-overlay" aria-hidden="true">
-    <div class="i18n-shape-box">
-      <svg class="i18n-m3-svg" viewBox="-180 -180 360 360" width="88" height="88">
-        <path fill="var(--md-sys-color-primary)"/>
-      </svg>
+    <div class="i18n-shape-box" style="display:flex;align-items:center;justify-content:center;">
+      <span class="riff-dots-loader lg" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   </div>
 
@@ -4866,13 +4939,39 @@ body:not(.home-next-to-search) .bs-home-circle { display: none !important; }
       </div>
     </div>
     <div id="css-editor-host" class="css-editor-host"></div>
+  </div>
+
   <div class="modal-backdrop hidden" id="offline-mode-modal"><div class="dialog-card" style="max-width:380px;text-align:center;align-items:center;gap:14px;"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg><p style="margin:0;font-size:15px;font-weight:600;line-height:1.45;color:var(--md-sys-color-on-surface);" data-i18n>You are in offline mode because there is no WiFi connection.</p><div class="dialog-actions" style="justify-content:center;width:100%;gap:10px;"><button type="button" class="btn-outline-pill" id="btn-offline-ok" style="flex:1;justify-content:center;" data-i18n>OK</button><button type="button" class="btn-pill-primary" id="btn-offline-retry" style="flex:1;justify-content:center;" data-i18n>Retry</button></div></div></div>
+
+  <div class="modal-backdrop hidden" id="duplicate-track-modal">
+    <div class="dialog-card" style="max-width: 390px;">
+      <h3 id="duplicate-track-modal-title" data-i18n>Already added</h3>
+      <p id="duplicate-track-modal-msg" style="margin: 0 0 16px; color: var(--md-sys-color-on-surface-variant); font-size: calc(14px * var(--font-scale, 1)); line-height: 1.45;" data-i18n>This track is already in this playlist.</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn-outline-pill" id="btn-dup-still-add" data-i18n>Still add</button>
+        <button type="button" class="btn-pill-primary" id="btn-dup-do-not-add" data-i18n>Do not add</button>
+      </div>
+    </div>
+  </div>
 
   <script src="../../assets/hls.min.js"></script>
   <script src="audio.js"></script>
   <script src="shapes.js"></script>
   <script src="lyrics-rtl.js"></script>
   <script src="track-sort.js"></script>
+    
+  <script src="modules/state.js"></script>
+  <script src="modules/utils.js"></script>
+  <script src="modules/theme.js"></script>
+  <script src="modules/audio.js"></script>
+  <script src="modules/visualizer.js"></script>
+  <script src="modules/eq.js"></script>
+  <script src="modules/audioeditor.js"></script>
+  <script src="modules/lyrics.js"></script>
+  <script src="modules/library.js"></script>
+  <script src="modules/import.js"></script>
+  <script src="modules/artist.js"></script>
+  <script src="modules/ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

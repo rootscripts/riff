@@ -321,6 +321,9 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
 const initTrackSort = enableTrackSort;
 
 if (typeof window !== 'undefined') {
+  window.TRACK_SORT_MODES = TRACK_SORT_MODES;
+  window.sortTracks = sortTracks;
+  window.backfillAddedAt = backfillAddedAt;
   window.enableTrackSort = enableTrackSort;
   window.initTrackSort = initTrackSort;
 }

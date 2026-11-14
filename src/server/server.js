@@ -23,6 +23,199 @@ const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, META
 const YT_COOKIES_FILE = path.join(DATA_DIR, 'yt-cookies.txt');
 const DEFAULTS_FILE = path.join(__dirname, '../renderer/defaults.json');
 
+const FIREFOX_AUTH_UA = process.platform === 'darwin'
+  ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:136.0) Gecko/20100101 Firefox/136.0'
+  : (process.platform === 'linux'
+      ? 'Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0');
+
+const GOOGLE_AUTH_STEALTH_SCRIPT = `
+(() => {
+  const host = (window.location && window.location.hostname) || '';
+  if (!/google\\.|youtube\\.|gstatic\\.|accounts\\./i.test(host) && host !== '') return;
+  try {
+    const rejectWebAuthn = () => Promise.reject(new DOMException('The operation either timed out or was not allowed.', 'NotSupportedError'));
+    try { delete window.PublicKeyCredential; } catch (_) {}
+    try {
+      Object.defineProperty(window, 'PublicKeyCredential', {
+        get: () => undefined,
+        set: () => {},
+        configurable: true
+      });
+    } catch (_) {}
+    if (navigator.credentials) {
+      try {
+        Object.defineProperty(navigator, 'credentials', {
+          value: {
+            get: rejectWebAuthn,
+            create: rejectWebAuthn,
+            store: rejectWebAuthn,
+            preventSilentAccess: () => Promise.resolve()
+          },
+          configurable: true
+        });
+      } catch (_) {
+        try {
+          navigator.credentials.get = rejectWebAuthn;
+          navigator.credentials.create = rejectWebAuthn;
+        } catch (__) {}
+      }
+    }
+    try { Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true }); } catch (_) {}
+    try { Object.defineProperty(navigator, 'vendor', { get: () => '', configurable: true }); } catch (_) {}
+    try { delete window.chrome; } catch (_) { try { window.chrome = undefined; } catch (__) {} }
+  } catch (_) {}
+})();
+`;
+
+const patchedAuthSessions = new WeakSet();
+function patchSessionForGoogleAuth(ses) {
+  if (!ses || patchedAuthSessions.has(ses)) return;
+  patchedAuthSessions.add(ses);
+  try {
+    if (ses.webRequest && typeof ses.webRequest.onBeforeSendHeaders === 'function') {
+      ses.webRequest.onBeforeSendHeaders(
+        { urls: ['*://*.google.com/*', '*://*.youtube.com/*', '*://*.googleapis.com/*', '*://*.gstatic.com/*'] },
+        (details, callback) => {
+          const reqHeaders = Object.assign({}, details.requestHeaders || {});
+          for (const k of Object.keys(reqHeaders)) {
+            const lower = k.toLowerCase();
+            if (lower.startsWith('sec-ch-ua') || lower === 'x-requested-with' || lower === 'x-browser-channel' || lower === 'x-browser-year' || lower === 'x-browser-validation' || lower === 'x-client-data') {
+              delete reqHeaders[k];
+            }
+          }
+          if (details.url && /accounts\.google\.com|youtube\.com\/signin/i.test(details.url)) {
+            reqHeaders['User-Agent'] = FIREFOX_AUTH_UA;
+          }
+          callback({ requestHeaders: reqHeaders });
+        }
+      );
+    }
+  } catch (_) {}
+}
+
+async function exportSessionCookiesToYtFile(ses) {
+  if (!ses || !ses.cookies) return false;
+  try {
+    const allCookies = await ses.cookies.get({});
+    const ytGoogleCookies = (allCookies || []).filter(c => c && c.domain && (c.domain.includes('youtube.com') || c.domain.includes('google.com')));
+    const hasAuth = ytGoogleCookies.some(c => c.name === 'SAPISID' || c.name === '__Secure-3PAPISID' || c.name === 'SID' || c.name === '__Secure-1PSID' || c.name === 'LOGIN_INFO');
+    if (!hasAuth) return false;
+
+    const lines = ['# Netscape HTTP Cookie File'];
+    for (const c of ytGoogleCookies) {
+      const dom = c.domain.startsWith('.') ? c.domain : '.' + c.domain;
+      const includeSub = dom.startsWith('.') ? 'TRUE' : 'FALSE';
+      const cPath = c.path || '/';
+      const secure = c.secure ? 'TRUE' : 'FALSE';
+      const exp = c.expirationDate ? Math.floor(c.expirationDate) : (Math.floor(Date.now() / 1000) + 31536000);
+      lines.push(`${dom}\t${includeSub}\t${cPath}\t${secure}\t${exp}\t${c.name}\t${c.value}`);
+      if (dom.includes('google.com') && ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID', '__Secure-1PSID', '__Secure-3PSID', '__Secure-1PAPISID', '__Secure-3PAPISID'].includes(c.name)) {
+        lines.push(`.youtube.com\tTRUE\t/\t${secure}\t${exp}\t${c.name}\t${c.value}`);
+      }
+    }
+    const content = lines.join('\n') + '\n';
+    if (cookieJarHasYtLogin(content)) {
+      fs.writeFileSync(YT_COOKIES_FILE, content, 'utf8');
+      ytCookieCache = { mtime: -1, valid: false };
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function attachGoogleAuthStealthToWindow(win) {
+  if (!win || win.isDestroyed() || !win.webContents) return;
+  const wc = win.webContents;
+  if (wc._riffGoogleAuthPatched) return;
+  wc._riffGoogleAuthPatched = true;
+
+  try {
+    patchSessionForGoogleAuth(wc.session);
+  } catch (_) {}
+
+  const applyCdpStealth = async () => {
+    if (win.isDestroyed() || wc.isDestroyed()) return;
+    try {
+      if (!wc.debugger.isAttached()) {
+        wc.debugger.attach('1.3');
+      }
+      await wc.debugger.sendCommand('Page.enable').catch(() => {});
+      await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        source: GOOGLE_AUTH_STEALTH_SCRIPT
+      }).catch(() => {});
+      try {
+        await wc.debugger.sendCommand('WebAuthn.enable', { enableUI: false });
+        await wc.debugger.sendCommand('WebAuthn.addVirtualAuthenticator', {
+          options: {
+            protocol: 'ctap2',
+            transport: 'internal',
+            hasResidentKey: false,
+            hasUserVerification: false,
+            isUserVerified: false,
+            automaticPresenceSimulation: false
+          }
+        });
+      } catch (_) {}
+    } catch (_) {}
+  };
+
+  wc.on('did-start-navigation', (event, navUrl, isInPlace, isMainFrame) => {
+    if (!navUrl) return;
+    if (/accounts\.google\.com|youtube\.com\/signin|accounts\.youtube\.com/i.test(navUrl)) {
+      applyCdpStealth();
+      try {
+        if (wc.debugger.isAttached()) {
+          wc.debugger.sendCommand('Network.enable').catch(() => {});
+          wc.debugger.sendCommand('Network.setUserAgentOverride', {
+            userAgent: FIREFOX_AUTH_UA,
+            acceptLanguage: 'en-US,en;q=0.9,ru;q=0.8',
+            platform: process.platform === 'darwin' ? 'MacIntel' : (process.platform === 'linux' ? 'Linux x86_64' : 'Win32')
+          }).catch(() => {});
+        }
+      } catch (_) {}
+      try { wc.executeJavaScript(GOOGLE_AUTH_STEALTH_SCRIPT, true).catch(() => {}); } catch (_) {}
+    }
+  });
+
+  wc.on('dom-ready', () => {
+    if (win.isDestroyed() || wc.isDestroyed()) return;
+    const curUrl = wc.getURL() || '';
+    if (/google\.com|youtube\.com/i.test(curUrl)) {
+      try { wc.executeJavaScript(GOOGLE_AUTH_STEALTH_SCRIPT, true).catch(() => {}); } catch (_) {}
+      exportSessionCookiesToYtFile(wc.session).catch(() => {});
+    }
+  });
+
+  wc.on('did-navigate', () => {
+    if (win.isDestroyed() || wc.isDestroyed()) return;
+    const curUrl = wc.getURL() || '';
+    if (/google\.com|youtube\.com/i.test(curUrl)) {
+      exportSessionCookiesToYtFile(wc.session).catch(() => {});
+    }
+  });
+}
+
+if (process.versions && process.versions.electron) {
+  try {
+    const { app, session } = require('electron');
+    if (app && app.commandLine) {
+      app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+      app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthn,WebAuthenticationConditionalUI');
+    }
+    if (app) {
+      app.on('browser-window-created', (_, win) => {
+        attachGoogleAuthStealthToWindow(win);
+      });
+      app.whenReady().then(() => {
+        if (session && session.defaultSession) {
+          patchSessionForGoogleAuth(session.defaultSession);
+        }
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 let ytCookieCache = { mtime: -1, valid: false };
 function hasYtLoginCookies() {
   try {
@@ -286,20 +479,23 @@ try {
 }
 
 function getMetaCacheId(artist, title) {
-  const key = getTrackNormalizedKey(artist, title);
-  if (!key || key === '::') return '';
+  const key = getTrackNormalizedKey(artist || 'unknown artist', title);
+  if (!key || key === '::' || key.endsWith('::')) return '';
   return 'trk_' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 12);
 }
 
 function saveTrackSource(artist, title, sourceData) {
-  const key = getTrackNormalizedKey(artist, title);
-  if (!key || key === '::' || !sourceData) return;
+  if (!title || !sourceData) return;
+  const key = getTrackNormalizedKey(artist || 'unknown artist', title);
+  if (!key || key === '::' || key.endsWith('::')) return;
   if (!trackMetadataIndex.__sources || typeof trackMetadataIndex.__sources !== 'object') {
     trackMetadataIndex.__sources = {};
   }
   trackMetadataIndex.__sources[key] = {
     ...(trackMetadataIndex.__sources[key] || {}),
     ...sourceData,
+    artist: artist || '',
+    title: title || '',
     updatedAt: Date.now()
   };
   try {
@@ -308,10 +504,17 @@ function saveTrackSource(artist, title, sourceData) {
 }
 
 function getSavedTrackSource(artist, title) {
-  const key = getTrackNormalizedKey(artist, title);
-  if (!key || key === '::') return null;
+  if (!title) return null;
   if (!trackMetadataIndex.__sources || typeof trackMetadataIndex.__sources !== 'object') return null;
-  return trackMetadataIndex.__sources[key] || null;
+  const key = getTrackNormalizedKey(artist || 'unknown artist', title);
+  if (key && trackMetadataIndex.__sources[key]) return trackMetadataIndex.__sources[key];
+  const titleKey = getTitleOnlyKey(title);
+  if (titleKey) {
+    for (const [k, val] of Object.entries(trackMetadataIndex.__sources)) {
+      if (k.endsWith('::' + titleKey) && val) return val;
+    }
+  }
+  return null;
 }
 
 function deleteSavedTrackSource(artist, title) {
@@ -436,12 +639,13 @@ function cleanTrackId(id) {
 
 async function findCachedFile(trackId) {
   const cleanId = cleanTrackId(trackId);
+  if (!cleanId) return null;
   const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
   for (const ext of extensions) {
     const filePath = path.join(CACHE_DIR, `${cleanId}${ext}`);
     try {
       const stat = await fs.promises.stat(filePath);
-      if (stat.size > 60000 || (cleanId.startsWith('tt_') && stat.size > 1000)) {
+      if (stat.size > 16000 || (cleanId.startsWith('tt_') && stat.size > 1000)) {
         const now = new Date();
         try {
           await fs.promises.utimes(filePath, now, now);
@@ -473,7 +677,7 @@ function findCachedFileByMeta(title, artist) {
     for (const ext of extensions) {
       const fp = path.join(CACHE_DIR, `${metaCacheId}${ext}`);
       try {
-        if (fs.existsSync(fp) && fs.statSync(fp).size > 60000) return fp;
+        if (fs.existsSync(fp) && fs.statSync(fp).size > 16000) return fp;
       } catch (_) {}
     }
   }
@@ -483,23 +687,25 @@ function findCachedFileByMeta(title, artist) {
     for (const ext of extensions) {
       const fp = path.join(CACHE_DIR, `${cleanSaved}${ext}`);
       try {
-        if (fs.existsSync(fp) && fs.statSync(fp).size > 60000) return fp;
+        if (fs.existsSync(fp) && fs.statSync(fp).size > 16000) return fp;
       } catch (_) {}
     }
   }
-  const targetTitle = title.toLowerCase().trim();
+  const targetTitle = stripBracketTranslation(title).toLowerCase().trim();
   const targetArtist = (artist || '').toLowerCase().trim();
   const targetKey = getTrackNormalizedKey(artist, title);
   for (const [cid, meta] of Object.entries(trackMetadataIndex)) {
     if (cid === '__sources' || !meta) continue;
-    const metaTitle = (meta.title || '').toLowerCase().trim();
+    const metaTitle = stripBracketTranslation(meta.title || '').toLowerCase().trim();
     const metaArtist = (meta.artist || '').toLowerCase().trim();
-    const directMatch = metaTitle === targetTitle && (!artist || !meta.artist || metaArtist === targetArtist || metaArtist.includes(targetArtist));
+    const directMatch = metaTitle === targetTitle && (!artist || !meta.artist || metaArtist === targetArtist || metaArtist.includes(targetArtist) || targetArtist.includes(metaArtist));
     const keyMatch = Boolean(targetKey && getTrackNormalizedKey(meta.artist, meta.title) === targetKey);
     if (directMatch || keyMatch) {
       for (const ext of extensions) {
         const fp = path.join(CACHE_DIR, `${cid}${ext}`);
-        if (fs.existsSync(fp)) return fp;
+        try {
+          if (fs.existsSync(fp) && fs.statSync(fp).size > 16000) return fp;
+        } catch (_) {}
       }
     }
   }
@@ -616,8 +822,49 @@ function safeJsonParse(value, fallback) {
   }
 }
 
+const MUSICAL_BRACKET_TAG_RE = /^(?:(?:feat\.?|ft\.?|featuring|prod\.?|produced\s+by|with|w\/|vs\.?)\b.*|(?:[\w\s.&'-]+\s+)?(?:remix|mix|edit|version|ver\.?|vip|dub|bootleg|mashup|rework|flip|refix)|live(?:\s+at\b.*|\s+from\b.*|\s+\d{4})?|acoustic|unplugged|demo|piano|guitar|orchestral|instrumental|karaoke|a\s*cappella|acapella|slowed(?:\s*\+?\s*reverb)?|reverb|sped\s+up|speed\s+up|nightcore|daycore|bass\s+boosted|8d|remaster(?:ed)?(?:\s+\d{4})?|deluxe|bonus(?:\s+track)?|extended|radio|club|original|short|full|explicit|clean|censored|uncensored|mono|stereo|ost\b.*|soundtrack|theme|(?:part|pt\.?|vol\.?|ch\.?|chapter|act|ep\.?)\s*[\d\w]+|v\d+(?:\.\d+)?|\d{4})$/i;
+
+function stripBracketTranslation(title) {
+  if (!title || typeof title !== 'string') return title || '';
+  const baseWithoutBrackets = title.replace(/\s*\([^()]*\)/g, '').replace(/\s*\[[^\[\]]*\]/g, '').trim();
+  if (!baseWithoutBrackets) return title.trim();
+  const hasCyrillicBase = /[а-яёіїєґ]/i.test(baseWithoutBrackets);
+  const hasNonLatinBase = hasCyrillicBase || /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(baseWithoutBrackets);
+  if (!hasNonLatinBase) return title.trim();
+
+  const cyrSelfTags = {
+    'интро': 'intro',
+    'аутро': 'outro',
+    'интерлюдия': 'interlude',
+    'скит': 'skit',
+    'фристайл': 'freestyle',
+    'сниппет': 'snippet'
+  };
+  const normBaseLower = baseWithoutBrackets.toLowerCase().replace(/ё/g, 'е').trim();
+
+  const filterBracket = (match, inner) => {
+    const cleanInner = String(inner || '').trim();
+    if (!cleanInner) return match;
+    const hasLatin = /[a-zA-Z]/.test(cleanInner);
+    const hasCyr = /[а-яёіїєґ]/i.test(cleanInner);
+    if (!hasLatin || hasCyr) return match;
+    const lowerInner = cleanInner.toLowerCase();
+    if (cyrSelfTags[normBaseLower] === lowerInner) return '';
+    if (/^(?:intro|outro|interlude|skit|freestyle|snippet)$/i.test(cleanInner)) return match;
+    if (MUSICAL_BRACKET_TAG_RE.test(cleanInner)) return match;
+    if (/\b(?:feat\.?|ft\.?|featuring|prod\.?|remix|slowed|reverb|sped\s+up|nightcore|live|version|edit|ost)\b/i.test(cleanInner)) return match;
+    return '';
+  };
+
+  return title
+    .replace(/\s*\(([^()]+)\)/g, filterBracket)
+    .replace(/\s*\[([^\[\]]+)\]/g, filterBracket)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function getTitleOnlyKey(title) {
-  let t = String(title || '').replace(/ё/gi, 'е').toLowerCase();
+  let t = stripBracketTranslation(String(title || '')).replace(/ё/gi, 'е').toLowerCase();
   t = t.replace(/\s*\([^)]*official[^)]*\)/gi, '')
        .replace(/\s*\[[^\]]*\]/gi, '')
        .replace(/\s*\([^)]*(video|audio|remaster(ed)?|lyrics?|visualizer)[^)]*\)/gi, '');
@@ -1065,6 +1312,22 @@ async function refreshSoundCloudClientId(force = false) {
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 
+const scStreamMetaByUrl = new Map();
+function rememberScStreamMeta(streamUrl, tObj) {
+  if (!streamUrl || !tObj) return;
+  const rawThumb = tObj.artwork_url || (tObj.user && tObj.user.avatar_url) || '';
+  const thumbnail = rawThumb ? rawThumb.replace('-large', '-t500x500') : '';
+  scStreamMetaByUrl.set(streamUrl, {
+    id: String(tObj.id || ''),
+    title: tObj.title || '',
+    artist: (tObj.user && (tObj.user.username || tObj.user.name)) || (tObj.publisher_metadata && tObj.publisher_metadata.artist) || '',
+    thumbnail: thumbnail || rawThumb,
+    url: normalizeSoundCloudUrl(tObj.permalink_url || (tObj.id ? `https://api.soundcloud.com/tracks/${tObj.id}` : '')),
+    platform: 'soundcloud'
+  });
+  boundMap(scStreamMetaByUrl, 100);
+}
+
 async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
   let cid = await refreshSoundCloudClientId(false);
   const norm = normalizeSoundCloudUrl(scUrlOrId || '');
@@ -1077,7 +1340,22 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
         if (r.ok) {
           const tObj = await r.json();
           const u = await resolveScTranscodingServer(tObj, cid);
-          if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
+          if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) {
+            rememberScStreamMeta(u, tObj);
+            return u;
+          }
+        }
+      }
+      if (norm && /^https?:\/\/(?:www\.|m\.)?soundcloud\.com\/[^/]+\/[^/?#]+/i.test(norm)) {
+        const resv = await fetch(`https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(norm)}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (resv.status === 401 || resv.status === 403) { cid = await refreshServerScClientId(); continue; }
+        if (resv.ok) {
+          const tObj = await resv.json();
+          const u = await resolveScTranscodingServer(tObj, cid);
+          if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) {
+            rememberScStreamMeta(u, tObj);
+            return u;
+          }
         }
       }
       if (queryFallback) {
@@ -1089,7 +1367,10 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
           const pick = col.find(t => t.policy !== 'SNIP' && t.duration > 30000 && !t.snipped) || col[0];
           if (pick) {
             const u = await resolveScTranscodingServer(pick, cid);
-            if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
+            if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) {
+              rememberScStreamMeta(u, pick);
+              return u;
+            }
           }
         }
       }
@@ -2480,13 +2761,15 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
 async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondaryCleanId, platform, meta = {}) {
   const metaCacheId = getMetaCacheId(meta.artist, meta.title);
   const ids = Array.from(new Set([cleanTrackId(primaryCleanId), cleanTrackId(secondaryCleanId), metaCacheId].filter(Boolean)));
-  if (!ids.length || !rawStreamUrl || rawStreamUrl.includes('.m3u8')) return;
+  if (!ids.length || !rawStreamUrl) return;
   const mainId = ids[0];
   if (downloadingSet.has(mainId) || await findCachedFile(mainId)) return;
   downloadingSet.add(mainId);
 
-  const ext = (rawStreamUrl.includes('mime=audio%2Fwebm') || rawStreamUrl.includes('mime=audio/webm')) ? '.webm'
-            : (rawStreamUrl.includes('.mp3') ? '.mp3' : '.m4a');
+  const isHls = rawStreamUrl.includes('.m3u8');
+  const ext = isHls ? '.m4a'
+            : ((rawStreamUrl.includes('mime=audio%2Fwebm') || rawStreamUrl.includes('mime=audio/webm')) ? '.webm'
+            : (rawStreamUrl.includes('.mp3') ? '.mp3' : '.m4a'));
   const tempPath = path.join(CACHE_DIR, `${mainId}.temp${ext}`);
   const finalPath = path.join(CACHE_DIR, `${mainId}${ext}`);
 
@@ -2495,6 +2778,46 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
   }
 
   try {
+    if (isHls) {
+      const ffmpegBin = resolveBinary('ffmpeg');
+      if (!ffmpegBin) throw new Error('ffmpeg unavailable for HLS cache');
+      await new Promise((resolve, reject) => {
+        const proc = spawn(ffmpegBin, ['-y', '-i', rawStreamUrl, '-vn', '-c:a', 'aac', '-b:a', '192k', tempPath], { windowsHide: true });
+        const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} reject(new Error('ffmpeg hls timeout')); }, 120000);
+        proc.on('close', code => {
+          clearTimeout(timer);
+          if (code === 0) resolve();
+          else reject(new Error('ffmpeg exit ' + code));
+        });
+        proc.on('error', err => { clearTimeout(timer); reject(err); });
+      });
+      const stat = await fs.promises.stat(tempPath);
+      if (stat.size > 16000) {
+        await fs.promises.rename(tempPath, finalPath);
+        for (const id of ids) {
+          if (id !== mainId) {
+            const aliasPath = path.join(CACHE_DIR, `${id}${ext}`);
+            if (!fs.existsSync(aliasPath)) {
+              try { await fs.promises.copyFile(finalPath, aliasPath); } catch (_) {}
+            }
+          }
+          saveTrackMetadata(id, {
+            id,
+            title: meta.title || '',
+            artist: meta.artist || '',
+            duration: meta.duration || 0,
+            thumbnail: meta.thumbnail || '',
+            platform: platform || 'soundcloud',
+            sourceMeta: meta.sourceMeta || null,
+            fileSize: stat.size
+          });
+        }
+      } else {
+        try { await fs.promises.unlink(tempPath); } catch (_) {}
+      }
+      return;
+    }
+
     let parsed;
     try { parsed = new URL(rawStreamUrl); } catch (_) { downloadingSet.delete(mainId); return; }
     const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' };
@@ -2506,7 +2829,7 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
     const arrayBuf = await resp.arrayBuffer();
     const buf = Buffer.from(arrayBuf);
-    if (buf.length > 64000) {
+    if (buf.length > 16000) {
       await fs.promises.writeFile(tempPath, buf);
       await fs.promises.rename(tempPath, finalPath);
       for (const id of ids) {
@@ -2523,6 +2846,7 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
           duration: meta.duration || 0,
           thumbnail: meta.thumbnail || '',
           platform: platform || 'ytmusic',
+          sourceMeta: meta.sourceMeta || null,
           fileSize: buf.length
         });
       }
@@ -3404,18 +3728,18 @@ async function fetchDeezerChart(limit = 24) {
 }
 
 async function checkNetConnectivity() {
-  const tryReq = (urlStr) => new Promise((resolve) => {
+  const tryReq = (urlStr, method = 'GET') => new Promise((resolve) => {
     try {
       const parsed = new URL(urlStr);
       const mod = parsed.protocol === 'http:' ? http : https;
       const req = mod.request(parsed, {
-        method: 'HEAD',
+        method,
         timeout: 3500,
         family: 4,
-        headers: { 'User-Agent': 'Riff' }
+        headers: { 'User-Agent': 'Mozilla/5.0 (Riff)' }
       }, (res) => {
         res.resume();
-        resolve(res.statusCode >= 200 && res.statusCode < 400);
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
       });
       req.on('timeout', () => {
         req.destroy();
@@ -3430,9 +3754,12 @@ async function checkNetConnectivity() {
     }
   });
 
-  const googleOk = await tryReq('https://www.google.com/generate_204');
-  if (googleOk) return true;
-  return await tryReq('https://api.deezer.com/chart/0/tracks?limit=1');
+  const checks = await Promise.all([
+    tryReq('https://www.google.com/generate_204', 'HEAD'),
+    tryReq('https://itunes.apple.com/search?term=a&limit=1', 'GET'),
+    tryReq('https://api.deezer.com/chart/0/tracks?limit=1', 'GET')
+  ]);
+  return checks.some(Boolean);
 }
 
 const YT_PROFILE_CACHE_FILE = path.join(DATA_DIR, 'yt_profile.json');
@@ -4111,7 +4438,7 @@ function makeCleanSearchQuery(artist, title) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const cleanT = String(title || '')
+  const cleanT = stripBracketTranslation(String(title || ''))
     .replace(/\s*[\(\[]\s*(?:feat\.?|ft\.?|prod\.?|featuring)[^)]*[\)\]]/gi, '')
     .replace(/\s*[\(\[]\s*(?:official\s*(?:music\s*)?(?:video|audio|lyric\s*video|visualizer)|lyrics?\s*video|lyrics?|visualizer|hd|hq|4k|mv|clip)\s*[\)\]]/gi, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
@@ -4189,22 +4516,36 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     trackMetadataIndex = {};
   }
 
-  let cachedFile = (!bust && cleanId) ? await findCachedFile(cleanId) : null;
-  if (!bust && !cachedFile && (title || artist)) {
+  const forceReset = Boolean(parsedUrl.query && parsedUrl.query.resetSource === '1');
+  let cachedFile = (!forceReset && cleanId) ? await findCachedFile(cleanId) : null;
+  if (!forceReset && !cachedFile && (title || artist)) {
     cachedFile = findCachedFileByMeta(title, artist);
   }
   if (forceYtDlp && cachedFile) {
     try { await fs.promises.unlink(cachedFile); } catch (_) {}
     cachedFile = null;
   }
-  const downloadedName = (!bust && (title || artist)) ? await findDownloadedFile(title, artist) : null;
+  const downloadedName = (!forceReset && (title || artist)) ? await findDownloadedFile(title, artist) : null;
 
-  if (!bust && !forShare && cachedFile) {
+  if (!forceReset && !forShare && cachedFile) {
     const cachedId = path.basename(cachedFile, path.extname(cachedFile));
+    const savedSrc = getSavedTrackSource(artist, title);
+    const indexedMeta = trackMetadataIndex[cachedId] || {};
+    const sourceMeta = savedSrc?.sourceMeta || indexedMeta.sourceMeta || {
+      id: savedSrc?.resolvedId || indexedMeta.id || cachedId || cleanId,
+      title: indexedMeta.title || title || '',
+      artist: indexedMeta.artist || artist || '',
+      thumbnail: indexedMeta.thumbnail || thumbnail || '',
+      platform: savedSrc?.platform || indexedMeta.platform || platform || 'ytmusic',
+      url: savedSrc?.url || trackUrl || ''
+    };
     const data = {
       success: true,
       isLocal: true,
-      streamUrl: `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(cachedId || cleanId)}`
+      cachedId: cachedId || cleanId,
+      resolvedId: savedSrc?.resolvedId || indexedMeta.id || cachedId || cleanId,
+      sourceMeta,
+      streamUrl: `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(cachedId || cleanId)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
@@ -4305,6 +4646,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, streamUrl: resolvedStreamUrl, shareWebUrl }));
       }
+      const scMeta = scStreamMetaByUrl.get(resolvedStreamUrl) || null;
+      const effectiveSourceMeta = sourceMetaObj || scMeta || {
+        id: finalId || cleanId || '',
+        title: title || '',
+        artist: artist || '',
+        thumbnail: thumbnail || (finalId && /^[a-zA-Z0-9_-]{11}$/.test(finalId) ? `https://i.ytimg.com/vi/${finalId}/hqdefault.jpg` : ''),
+        url: (finalId && /^[a-zA-Z0-9_-]{11}$/.test(finalId)) ? `https://www.youtube.com/watch?v=${finalId}` : (trackUrl || ''),
+        platform: (scMeta ? 'soundcloud' : (platform || 'ytmusic'))
+      };
+      const effectiveResolvedId = resolvedId || (scMeta && scMeta.id) || finalId;
       const portVal = typeof ACTIVE_PORT !== 'undefined' ? ACTIVE_PORT : PORT;
       const isHls = typeof resolvedStreamUrl === 'string' && resolvedStreamUrl.includes('.m3u8');
       const proxied = 'http://127.0.0.1:' + portVal + '/api/audio-proxy?url=' + encodeURIComponent(resolvedStreamUrl);
@@ -4315,33 +4666,27 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         rawStreamUrl: resolvedStreamUrl,
         proxyUrl: proxied,
         isHls: isHls,
-        sourceMeta: sourceMetaObj || null
+        sourceMeta: effectiveSourceMeta
       };
-      if (resolvedId) data.resolvedId = resolvedId;
-      if (artist && title) {
-        saveTrackSource(artist, title, {
-          resolvedId: finalId || '',
-          url: sourceMetaObj?.url || (finalId && /^[a-zA-Z0-9_-]{11}$/.test(finalId) ? `https://www.youtube.com/watch?v=${finalId}` : (trackUrl || '')),
-          platform: sourceMetaObj?.platform || platform || 'ytmusic',
-          sourceMeta: sourceMetaObj || data.sourceMeta || null
+      if (effectiveResolvedId) data.resolvedId = effectiveResolvedId;
+      if (title) {
+        saveTrackSource(artist || 'unknown artist', title, {
+          resolvedId: effectiveResolvedId || '',
+          url: effectiveSourceMeta?.url || (effectiveResolvedId && /^[a-zA-Z0-9_-]{11}$/.test(effectiveResolvedId) ? `https://www.youtube.com/watch?v=${effectiveResolvedId}` : (trackUrl || '')),
+          platform: effectiveSourceMeta?.platform || platform || 'ytmusic',
+          sourceMeta: effectiveSourceMeta
         });
       }
       if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
-      if (finalId) streamUrlCache.set(finalId.toLowerCase() + '_' + quality, { timestamp: Date.now(), data });
+      if (effectiveResolvedId) streamUrlCache.set(String(effectiveResolvedId).toLowerCase() + '_' + quality, { timestamp: Date.now(), data });
       if (cleanId) streamUrlCache.set(cleanId.toLowerCase() + '_' + quality, { timestamp: Date.now(), data });
       if (metaStreamKey) streamUrlCache.set(metaStreamKey, { timestamp: Date.now(), data });
       if (!forShare && resolvedStreamUrl) {
-        const dlTargetUrl = (resolvedId && /^[a-zA-Z0-9_-]{11}$/.test(resolvedId))
-          ? ('https://www.youtube.com/watch?v=' + resolvedId)
-          : (sourceMetaObj?.url || trackUrl || '');
         const metaId = getMetaCacheId(artist, title);
+        const enrichedMeta = { ...meta, sourceMeta: effectiveSourceMeta };
         setTimeout(() => {
-          if (!resolvedStreamUrl.includes('.m3u8')) {
-            cacheResolvedStreamToDisk(resolvedStreamUrl, cleanId || metaId, resolvedId || metaId || cleanId, platform, meta).catch(() => {});
-          } else if (dlTargetUrl && dlTargetUrl.startsWith('http')) {
-            downloadTrackToDisk(dlTargetUrl, resolvedId || metaId || cleanId, sourceMetaObj?.platform || platform, meta).catch(() => {});
-          }
-        }, 1200);
+          cacheResolvedStreamToDisk(resolvedStreamUrl, cleanId || metaId, effectiveResolvedId || metaId || cleanId, effectiveSourceMeta?.platform || platform, enrichedMeta).catch(() => {});
+        }, 600);
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(data));
@@ -4361,10 +4706,6 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         s = await resolveYtCandidateStreamDlp(candId);
         if (s) return s;
       } catch (_) {}
-      if (!s && (q || searchQ)) {
-        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ); } catch (_) {}
-        if (s) return s;
-      }
       return null;
     };
 
@@ -4396,10 +4737,6 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
           needYtAuth = true;
         }
       }
-      if (!s && (q || searchQ)) {
-        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ); } catch (_) {}
-        if (s) return s;
-      }
       return s;
     };
 
@@ -4427,13 +4764,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     const failedYtIds = new Set(blockedIds);
 
-    if (!bust && !forceYtDlp && artist && title) {
+    if (!forceReset && !forceYtDlp && title) {
       const savedSrc = getSavedTrackSource(artist, title);
       if (savedSrc) {
         const savedId = String(savedSrc.resolvedId || '').trim();
         const savedUrl = String(savedSrc.url || '').trim();
-        if (savedSrc.platform === 'soundcloud' && savedUrl && !failedYtIds.has(savedId) && !failedYtIds.has(savedUrl)) {
-          const scStream = await resolveScCandidateStream(savedUrl, savedId);
+        if (savedSrc.platform === 'soundcloud' && (savedUrl || savedId) && !failedYtIds.has(savedId) && !failedYtIds.has(savedUrl)) {
+          let scStream = await resolveScCandidateStream(savedUrl, savedId);
+          if (!scStream && (q || searchQ)) {
+            scStream = await fetchDirectSoundCloudStreamServer(savedId || savedUrl, q || searchQ);
+          }
           if (scStream) return sendStreamResponse(scStream, savedId || cleanId, savedSrc.sourceMeta || null);
         } else if (extractYtIdFromAny(savedId) && !failedYtIds.has(savedId)) {
           const ytStream = await resolveYtCandidateStream(savedId);
@@ -4861,9 +5201,10 @@ async function fetchGeniusArtistAlbums(artistName, geniusArtistId = null) {
     const isDef = u => !u || /default_avatar|default_cover|assets\.genius\.com/i.test(u);
     const cover = !isDef(alb.cover_art_url) ? alb.cover_art_url : (!isDef(alb.cover_art_thumbnail_url) ? alb.cover_art_thumbnail_url : '');
     const year = alb.release_date_components?.year ? String(alb.release_date_components.year) : (alb.release_date_for_display ? String(alb.release_date_for_display).slice(-4) : '');
+    const cleanAlbTitle = stripBracketTranslation(alb.name);
     out.push({
       id: `gn_alb_${alb.id}`,
-      title: alb.name,
+      title: cleanAlbTitle || alb.name,
       artist: albArtist,
       cover,
       year: /^\d{4}$/.test(year) ? year : '',
@@ -5324,9 +5665,10 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
         const gnViews = Number(s.stats?.pageviews) || 0;
         const bestPlays = Math.max(scPlays, gnViews);
         const dur = scClean?.duration || (scRaw?.duration ? Math.round(scRaw.duration / 1000) : 160);
+        const cleanSongTitle = stripBracketTranslation(s.title);
         tracks.push({
           id: scClean?.id ? String(scClean.id) : `gn_${s.id}`,
-          title: s.title,
+          title: cleanSongTitle,
           artist: s.primary_artist?.name || resolvedName,
           duration: dur,
           durationMs: dur * 1000,
@@ -5335,11 +5677,11 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
           playCount: bestPlays > 0 ? bestPlays : undefined,
           playsText: bestPlays > 0 ? bestPlays.toLocaleString('en-US') : undefined,
           url: scClean?.url || scRaw?.permalink_url || '',
-          searchQuery: `${s.primary_artist?.name || resolvedName} - ${s.title}`,
+          searchQuery: `${s.primary_artist?.name || resolvedName} - ${cleanSongTitle}`,
           platform: 'soundcloud',
           fromGenius: true,
           isCached: false,
-          isExplicit: isTextExplicit(s.title)
+          isExplicit: isTextExplicit(cleanSongTitle)
         });
       }
     } catch (_) {}
@@ -5397,9 +5739,10 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
           const validImg = (rawImg && !rawImg.includes('2a96cbd8b46e442fc41c2b86b821562f')) ? rawImg : (scCover || avatar || '');
           const playcount = Math.max(Number(scRaw?.playback_count) || 0, parseInt(item.playcount || '0', 10));
           const dur = scClean?.duration || (Number(item.duration) > 0 ? Number(item.duration) : 180);
+          const cleanLfmTitle = stripBracketTranslation(item.name);
           tracks.push({
-            id: scClean?.id ? String(scClean.id) : `lfm_${crypto.createHash('md5').update(artName + '::' + item.name).digest('hex').slice(0, 10)}`,
-            title: item.name,
+            id: scClean?.id ? String(scClean.id) : `lfm_${crypto.createHash('md5').update(artName + '::' + cleanLfmTitle).digest('hex').slice(0, 10)}`,
+            title: cleanLfmTitle,
             artist: artName,
             duration: dur,
             durationMs: dur * 1000,
@@ -5408,10 +5751,10 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
             playCount: playcount > 0 ? playcount : undefined,
             playsText: playcount > 0 ? playcount.toLocaleString('en-US') : undefined,
             url: scClean?.url || scRaw?.permalink_url || '',
-            searchQuery: `${artName} - ${item.name}`,
+            searchQuery: `${artName} - ${cleanLfmTitle}`,
             platform: 'soundcloud',
             isCached: false,
-            isExplicit: isTextExplicit(item.name)
+            isExplicit: isTextExplicit(cleanLfmTitle)
           });
         }
       } catch (_) {}
@@ -5561,15 +5904,25 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
 }
 
 async function handleLocalTrack(req, res, trackId) {
+  const parsedUrl = (req && req.url) ? url.parse(req.url, true) : { query: {} };
+  const qTitle = parsedUrl.query?.title || '';
+  const qArtist = parsedUrl.query?.artist || '';
   const cleanId = cleanTrackId(trackId);
-  let filePath = await findCachedFile(cleanId);
+  let filePath = cleanId ? await findCachedFile(cleanId) : null;
+  if (!filePath && (qTitle || qArtist)) {
+    filePath = findCachedFileByMeta(qTitle, qArtist);
+  }
   if (!filePath) {
     for (const [cid, meta] of Object.entries(trackMetadataIndex)) {
-      if (cid === cleanId || (meta && meta.title && cleanTrackId(meta.title) === cleanId)) {
+      if (cid === '__sources' || !meta) continue;
+      if (cid === cleanId || (meta.id && cleanTrackId(meta.id) === cleanId) || (meta.title && cleanTrackId(meta.title) === cleanId)) {
         const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
         for (const ext of extensions) {
           const fp = path.join(CACHE_DIR, `${cid}${ext}`);
           if (fs.existsSync(fp)) { filePath = fp; break; }
+        }
+        if (!filePath && meta.title) {
+          filePath = findCachedFileByMeta(meta.title, meta.artist);
         }
       }
       if (filePath) break;
@@ -7334,6 +7687,7 @@ function fetchNetEaseWords(title, artist, targetDuration) {
 const SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
 
 const TOKEN_PROTECTED_ROUTES = new Set([
+  '/api/yt-cookies-from-browser',
   '/api/save-track-source',
   '/api/save-default-settings',
   '/api/state',
@@ -10098,7 +10452,7 @@ async function handleAlbumTracks(req, res, parsedUrl) {
           const albArtist = gAlb?.artist?.name || artist || '';
           tracks = gTracks.map((item, idx) => {
             const s = item?.song || {};
-            const sTitle = s.title || `Track ${idx + 1}`;
+            const sTitle = stripBracketTranslation(s.title || `Track ${idx + 1}`);
             const sArtist = s.primary_artist?.name || albArtist;
             const sCover = s.song_art_image_thumbnail_url || albCover || '';
             return {
@@ -11257,10 +11611,84 @@ async function requestHandler(req, res) {
   }
 
   if (parsedUrl.pathname === '/api/youtube-account-info') {
+    if (!hasYtLoginCookies() && process.versions && process.versions.electron) {
+      try {
+        const { session } = require('electron');
+        if (session && session.defaultSession) {
+          await exportSessionCookiesToYtFile(session.defaultSession);
+        }
+      } catch (_) {}
+    }
     const loggedIn = hasYtLoginCookies();
     const user = loggedIn ? await fetchYoutubeAccountProfileFromCookies() : null;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true, loggedIn, user }));
+  }
+
+  if (parsedUrl.pathname === '/api/yt-cookies-from-browser' && req.method === 'POST') {
+    const browsers = ['firefox', 'edge', 'chrome', 'brave', 'opera', 'vivaldi', 'chromium'];
+    let importedBrowser = '';
+    for (const br of browsers) {
+      const tmpCookiePath = path.join(DATA_DIR, `.yt-browser-${br}-${Date.now()}.txt`);
+      try {
+        await executeYtDlp([
+          '--cookies-from-browser', br,
+          '--cookies', tmpCookiePath,
+          '--skip-download',
+          '--no-warnings',
+          '--playlist-items', '0',
+          'https://www.youtube.com'
+        ], 12000, { noCookies: true, quiet: true });
+      } catch (_) {}
+      try {
+        if (fs.existsSync(tmpCookiePath)) {
+          const txt = fs.readFileSync(tmpCookiePath, 'utf8');
+          if (cookieJarHasYtLogin(txt)) {
+            fs.copyFileSync(tmpCookiePath, YT_COOKIES_FILE);
+            try { fs.unlinkSync(tmpCookiePath); } catch (_) {}
+            ytCookieCache = { mtime: -1, valid: false };
+            importedBrowser = br;
+            if (process.versions && process.versions.electron) {
+              try {
+                const { session } = require('electron');
+                if (session && session.defaultSession) {
+                  for (const line of txt.split('\n')) {
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed.startsWith('#')) continue;
+                    const parts = trimmed.split('\t');
+                    if (parts.length >= 7 && (parts[0].includes('youtube.com') || parts[0].includes('google.com'))) {
+                      const cleanDom = parts[0].replace(/^\./, '');
+                      const isSec = parts[3] === 'TRUE';
+                      await session.defaultSession.cookies.set({
+                        url: `${isSec ? 'https' : 'http'}://${cleanDom}${parts[2] || '/'}`,
+                        domain: parts[0],
+                        path: parts[2] || '/',
+                        secure: isSec,
+                        expirationDate: parseInt(parts[4], 10) || (Math.floor(Date.now() / 1000) + 31536000),
+                        name: parts[5],
+                        value: parts[6]
+                      }).catch(() => {});
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+            break;
+          }
+          try { fs.unlinkSync(tmpCookiePath); } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    const loggedIn = hasYtLoginCookies();
+    const user = loggedIn ? await fetchYoutubeAccountProfileFromCookies() : null;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: Boolean(importedBrowser && loggedIn),
+      loggedIn,
+      browser: importedBrowser,
+      user,
+      error: importedBrowser ? '' : 'No active YouTube session found in system browsers (try Firefox, Edge, Brave, or Chrome)'
+    }));
   }
 
   if (parsedUrl.pathname === '/api/artist') {
@@ -11286,12 +11714,19 @@ async function requestHandler(req, res) {
 
   if (parsedUrl.pathname === '/api/check-cache') {
     const trackId = parsedUrl.query.id || '';
+    const qTitle = parsedUrl.query.title || '';
+    const qArtist = parsedUrl.query.artist || '';
     const cleanId = cleanTrackId(trackId);
-    const cachedFile = await findCachedFile(cleanId);
+    let cachedFile = cleanId ? await findCachedFile(cleanId) : null;
+    if (!cachedFile && (qTitle || qArtist)) {
+      cachedFile = findCachedFileByMeta(qTitle, qArtist);
+    }
+    const cachedId = cachedFile ? path.basename(cachedFile, path.extname(cachedFile)) : cleanId;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ 
-      cached: !!cachedFile, 
-      streamUrl: cachedFile ? `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` : null 
+      cached: !!cachedFile,
+      cachedId,
+      streamUrl: cachedFile ? `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(cachedId)}` : null 
     }));
   }
 
