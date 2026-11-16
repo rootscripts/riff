@@ -1,1 +1,0 @@
-ADD THE PLUGINS IN SETTINGS > PLUGINS > ADD > "choose file u wanna add"
