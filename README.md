@@ -131,7 +131,7 @@ macOS releases are ad-hoc signed. If Gatekeeper blocks the app on first launch:
 
 ## Contributing
 
-Bug reports and fixes are welcome. Check [Issues](https://github.com/rootscripts/riff/issues) before opening a ticket. For experiments or major feature additions, you are welcome to fork the repository.
+Contributing is not welcome and we will never open pull request tab, the app is developed exclusively by our core team, please do not write us if you want to join or something
 
 ---
 
