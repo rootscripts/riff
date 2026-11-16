@@ -18,22 +18,22 @@
 
 ## Overview
 
-Riff is an open-source desktop music player for Windows, Linux, and macOS. It streams from YouTube Music, YouTube, and SoundCloud without ads, and plays local audio files (FLAC, WAV, MP3, OGG).
+Riff is the best open-source desktop music player for Windows, Linux, and macOS. It streams from YouTube Music, YouTube, and SoundCloud without ads, and plays local audio files (FLAC, WAV, MP3, OGG).
 
-No account or subscription required. No tracking or telemetry.
+No account or subscription required. No tracking or telemetry. Never.
 
 ---
 
 ## Features
 
-- **Streaming & Local Files**: Stream from YouTube Music, YouTube, and SoundCloud without ads, or play local lossless tracks (FLAC, WAV, MP3, OGG, M4A).
-- **Synced Lyrics**: Syllable and timestamped lyrics with support for `.lrc` files, manual timing offset, and translations.
-- **Audio Tools**: 10-band equalizer with presets, playback speed and pitch control, reverb, and an in-app audio trimmer.
-- **Playlist Migration**: Import public playlists from Spotify, Apple Music, Deezer, and YouTube directly into your library.
-- **Visualizers**: WebGL and canvas audio visualizers.
-- **Interface & Themes**: Theme customizer with dynamic colors extracted from album art, plus a built-in CSS editor for custom styles.
+- **Streaming & local**: Stream from YouTube Music, YouTube, and SoundCloud without ads, or play local lossless tracks (FLAC, WAV, MP3, OGG, M4A).
+- **Syllable-synced Lyrics**: Syllable and timestamped lyrics with support for `.lrc` files, manual timing offset, and translations.
+- **Audio editor, presets**: 10-band equalizer, playback speed and pitch control with presets, reverb, bass boost, clear sound function, volume normalizer, and an in-app sleep timer. Provides also presets tab to switch between your custom or our official presets like slowed + reverb, nightcore.
+- **Playlist import**: Import public playlists from Spotify, Apple Music, Deezer, VK Music, Yandex Music, YouTube Music and YouTube directly into your library with synchronization so you don't miss new tracks in the playlist.
+- **Visualizers**: WebGL and canvas audio visualizers (3 types available: wave, bars, swift).
+- **Interface & Themes**: Theme customizer with dynamic colors extracted from album art, plus a built-in CSS editor for custom styles, intensity, monochrome brightness, brightness slider, with 20+ icons available and custom icon available also.
 - **Discord RPC**: Shows the active track, artist, and playback progress in Discord.
-- **Plugins**: Extensible system for custom functionality and themes.
+- **Plugins**: Extensible system for custom functionality and custom .css themes.
 
 ---
 
