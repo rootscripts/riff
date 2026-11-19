@@ -26,13 +26,15 @@ No account or subscription required. No tracking or telemetry. Never.
 
 ## Features
 
-- **Streaming & local**: Stream from YouTube Music, YouTube, and SoundCloud without ads, or play local lossless tracks (FLAC, WAV, MP3, OGG, M4A).
+- **Streaming & local**: Stream from YouTube Music, YouTube, and SoundCloud without ads, with automatic fallback, or play local lossless tracks (FLAC, WAV, MP3, OGG, M4A).
 - **Syllable-synced Lyrics**: Syllable and timestamped lyrics with support for `.lrc` files, manual timing offset, and translations.
 - **Audio editor, presets**: 10-band equalizer, playback speed and pitch control with presets, reverb, bass boost, clear sound function, volume normalizer, and an in-app sleep timer. Provides also presets tab to switch between your custom or our official presets like slowed + reverb, nightcore.
-- **Playlist import**: Import public playlists from Spotify, Apple Music, Deezer, VK Music, Yandex Music, YouTube Music and YouTube directly into your library with synchronization so you don't miss new tracks in the playlist.
+- **Playlist import**: Import public playlists from Spotify, Apple Music, Deezer, VK Music, Yandex Music, YouTube Music, TikTok and YouTube directly into your library with synchronization so you don't miss new tracks in the playlist.
 - **Visualizers**: WebGL and canvas audio visualizers (3 types available: wave, bars, swift).
 - **Interface & Themes**: Theme customizer with dynamic colors extracted from album art, plus a built-in CSS editor for custom styles, intensity, monochrome brightness, brightness slider, with 20+ icons available and custom icon available also.
 - **Discord RPC**: Shows the active track, artist, and playback progress in Discord.
+- **Last.fm**: Built-in easy last.fm scrobbler.
+
 - **Plugins**: Extensible system for custom functionality and custom .css themes.
 
 ---
